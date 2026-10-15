@@ -54,7 +54,22 @@ Claude Desktop (`claude_desktop_config.json`, via `mcp-remote`):
 }
 ```
 
-Other clients (for example Cline `cline_mcp_settings.json`) can use the same URL. After `get_api_key`, add `"headers": { "X-API-Key": "<key>" }` on URL-based configs.
+Smithery / remote HTTP. Public streamable HTTP, no API key, no `Authorization` header. Paste the URL into Smithery or any remote HTTP client (Cline `cline_mcp_settings.json` uses this same URL):
+
+```text
+https://toolweather.toolweather.workers.dev/mcp
+```
+
+Smithery HTTP config (`type` and `url` only, per https://smithery.ai/docs/use/deep-linking):
+
+```json
+{
+  "type": "http",
+  "url": "https://toolweather.toolweather.workers.dev/mcp"
+}
+```
+
+The same anonymous blocks are on https://toolweather.pages.dev/#install. After `get_api_key`, add `"headers": { "X-API-Key": "<key>" }` on URL-based configs.
 
 Verify: call `check_mcp_server_health` with `{"server":"com.ufcalendar/fight-api"}`, `check_api_status` with `{"provider":"openai"}`, `score_spend` with `{"amount":1,"category":"status_check","merchant":"https://example.com"}`, and `check_merchant` with `{"target":"api.openai.com"}`. Health and status results start with a one-line `summary`. `score_spend` returns `approve`, `ask_human`, or `block`. `check_merchant` returns `trusted`, `unknown`, `suspicious`, or `block`.
 

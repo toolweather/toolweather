@@ -3,8 +3,9 @@
 Writes site/index.html, then the readiness leaderboard, per-server pages,
 sitemap.xml, and robots.txt (see build_servers.py). probe.yml deploys site/.
 """
-import base64, html, json, sqlite3, statistics, datetime, os
+import html, sqlite3, statistics, datetime, os
 import build_servers
+from site_install import INSTALL_CSS, install_section
 DB = "mcp_health.db"; OUT = "site/index.html"
 c = sqlite3.connect(DB); c.row_factory = sqlite3.Row
 LATEST = """SELECT e.server_name, e.url, p.* FROM endpoints e JOIN probes p ON p.id=(SELECT max(id) FROM probes WHERE endpoint_id=e.id)"""
@@ -45,11 +46,6 @@ ex_slug = build_servers.server_slug(ex)
 ex_badge = html.escape(build_servers.badge_url(ex), quote=True)
 _stamp = datetime.datetime.fromtimestamp(last, datetime.timezone.utc).strftime("%d%H%MZ")
 metar = f"TW {_stamp} OPEN{round(100*by.get('ok',0)/max(total,1))} AUTH{round(100*by.get('auth_required',0)/max(total,1))} HS{med:.0f} QNH1013"
-_mcp_url = "https://toolweather.toolweather.workers.dev/mcp"
-_cursor_cfg = json.dumps({"url": _mcp_url}, separators=(",", ":"))
-_cursor_b64 = base64.b64encode(_cursor_cfg.encode()).decode()
-cursor_deeplink = "cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=" + _cursor_b64
-cursor_href = html.escape(cursor_deeplink, quote=True)
 # ISOBAR v14. Light surfaces and --clay are the locked parchment hexes.
 # --acc is clay darkened to #7A5432 so small links clear contrast on paper;
 # display clay (wordmark, rules, mascot bead) stays #A67C52.
@@ -140,86 +136,17 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
 .products p{margin:0 0 10px;color:var(--mut);font-size:13.5px}
 .tools{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:0}
 .tools code{color:var(--ink);background:var(--wash);border-radius:6px;padding:2px 6px;font-size:12px}
-.install{margin-bottom:22px}.try{margin:0 0 12px;font-size:14.5px}
-.cfg{margin-top:14px}.cfgh{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
-.cfgh h3{margin:0;font-size:14px;font-weight:500}.cfgh span{color:var(--mut);font-size:12.5px;font-family:var(--mono)}
-.copy{margin-left:auto;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:3px 10px;font:500 13px var(--sans);cursor:pointer}
-.addcursor{display:inline-flex;margin:0 0 12px}.addcursor img{height:32px;width:auto}
-.addcursor .for-dark{display:none}
-:root[data-theme=dark] .addcursor .for-light{display:none}
-:root[data-theme=dark] .addcursor .for-dark{display:inline}
-.install pre{white-space:pre;word-break:normal;overflow:auto}
 @media(max-width:980px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:800px){.products{grid-template-columns:1fr}.hero{font-size:24px}h1{font-size:34px}.grid{grid-template-columns:1fr}}
 @media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.wrap{padding:24px 16px 48px}}
-"""
+""" + INSTALL_CSS
 suite_html = f"""<p class="hero">One connection gives you three tools.</p>
 <div class="products">
 <div class="card"><h2>MCP health</h2><p>Is this MCP server or tool safe to call right now? About 2,000 servers, probed every 15 minutes.</p><ul class="tools"><li><code>check_mcp_server_health</code></li><li><code>find_alternative_mcp_servers</code></li><li><code>watch_server</code></li><li><code>list_watches</code></li><li><code>unwatch_server</code></li><li><code>get_api_key</code></li></ul></div>
 <div class="card"><h2>Upstream</h2><p>API status and model retirements, across about 40 providers.</p><ul class="tools"><li><code>check_api_status</code></li><li><code>check_model_deprecation</code></li><li><code>list_recent_api_changes</code></li><li><code>list_providers</code></li><li><code>get_digest</code></li></ul></div>
 <div class="card"><h2>SpendGate</h2><p>approve, ask_human, or block before an agent pays.</p><ul class="tools"><li><code>score_spend</code></li><li><code>get_quota</code></li><li><code>spendgate_get_api_key</code></li></ul></div>
 </div>
-<div class="card install" id="install"><h2>Connect once</h2>
-<p class="try">Free to try. No signup. These configs connect with no key (50 calls/day). Call <code>get_api_key</code> to raise the quota to 1,000 calls/day and 3 watches, then send that key as <code>X-API-Key</code>.</p>
-<a class="addcursor" href="{cursor_href}"><img class="for-light" src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add to Cursor" height="32"><img class="for-dark" src="https://cursor.com/deeplink/mcp-install-light.svg" alt="Add to Cursor" height="32"></a>
-<div class="cfg"><div class="cfgh"><h3>Cursor install link</h3><button class="copy" type="button" data-copy="cfg-deeplink">Copy</button></div>
-<pre id="cfg-deeplink">{cursor_deeplink}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Cursor</h3><span>~/.cursor/mcp.json</span><button class="copy" type="button" data-copy="cfg-cursor">Copy</button></div>
-<pre id="cfg-cursor">{{
-  "mcpServers": {{
-    "toolweather": {{
-      "url": "{_mcp_url}"
-    }}
-  }}
-}}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Claude Code</h3><span>.mcp.json</span><button class="copy" type="button" data-copy="cfg-claude-code">Copy</button></div>
-<pre id="cfg-claude-code">{{
-  "mcpServers": {{
-    "toolweather": {{
-      "type": "http",
-      "url": "{_mcp_url}"
-    }}
-  }}
-}}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Claude Code CLI</h3><button class="copy" type="button" data-copy="cfg-claude-cli">Copy</button></div>
-<pre id="cfg-claude-cli">claude mcp add --transport http toolweather {_mcp_url}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Claude Desktop</h3><span>claude_desktop_config.json</span><button class="copy" type="button" data-copy="cfg-desktop">Copy</button></div>
-<pre id="cfg-desktop">{{
-  "mcpServers": {{
-    "toolweather": {{
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "{_mcp_url}"]
-    }}
-  }}
-}}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Raise the quota</h3><span>after get_api_key</span><button class="copy" type="button" data-copy="cfg-raise">Copy</button></div>
-<pre id="cfg-raise">Cursor and Claude Code, inside toolweather:
-"headers": {{ "X-API-Key": "&lt;key from get_api_key&gt;" }}
-
-Claude Code CLI:
-claude mcp add --transport http toolweather {_mcp_url} --header "X-API-Key: &lt;key&gt;"
-
-Claude Desktop args, plus "env": {{ "TW_KEY": "&lt;key&gt;" }}:
-"--header", "X-API-Key:${{TW_KEY}}"</pre></div>
-</div>
-<script>
-document.querySelectorAll("[data-copy]").forEach(function(b){{
-  b.addEventListener("click", function(){{
-    var el=document.getElementById(b.getAttribute("data-copy"));
-    var text=el.textContent.replace(/^\\n+|\\n+$/g, "");
-    var ta=document.createElement("textarea");
-    ta.value=text; ta.setAttribute("readonly","");
-    ta.style.position="fixed"; ta.style.top="0"; ta.style.left="0"; ta.style.opacity="0";
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    var ok=false; try{{ ok=document.execCommand("copy"); }}catch(e){{}}
-    ta.remove();
-    if(navigator.clipboard&&window.isSecureContext) navigator.clipboard.writeText(text).catch(function(){{}});
-    var prev=b.textContent;
-    b.textContent=ok?"Copied":"Copy failed";
-    setTimeout(function(){{ b.textContent=prev; }}, 2500);
-  }});
-}});
-</script>"""
+{install_section()}"""
 page = f"""<!doctype html><html lang="en"><head><link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt"><link rel="service-desc" type="application/json" href="https://toolweather.toolweather.workers.dev/openapi.json"><link rel="mcp-server-card" type="application/json" href="/.well-known/mcp"><script>(function(){{var t=localStorage.getItem("tw-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t}})();
 function twToggle(){{var d=document.documentElement,t=d.dataset.theme==="dark"?"light":"dark";d.dataset.theme=t;localStorage.setItem("tw-theme",t);document.getElementById("tg").textContent=t==="dark"?"Light mode":"Dark mode"}}</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Toolweather — MCP health, API status, spend checks, and merchant checks for agents</title>
@@ -229,7 +156,7 @@ function twToggle(){{var d=document.documentElement,t=d.dataset.theme==="dark"?"
 {suite_css}
 </style></head><body><div class="wrap">
 <svg class="isobars" viewBox="0 0 1200 280" preserveAspectRatio="none" aria-hidden="true"><path d="M-40 78 C 150 28, 280 148, 450 74 S 740 8, 940 92 S 1160 168, 1280 64" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M-40 142 C 170 92, 310 202, 490 132 S 800 52, 1000 148 S 1200 214, 1300 132" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/><path d="M-20 206 C 190 156, 350 266, 550 196 S 880 116, 1100 206 S 1280 266, 1340 196" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
-<header><div class="logo"><img class="mark" src="mark.svg" width="56" height="56" alt=""><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check {when}<a href="/servers/">Leaderboard</a><button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
+<header><div class="logo"><img class="mark" src="mark.svg" width="56" height="56" alt=""><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check {when}<a href="#install">Install</a><a href="/servers/">Leaderboard</a><button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
 <p class="metar"><span class="chip">BUNDLE</span>{metar}</p>
 <h1>MCP health, API status, spend checks, and merchant checks for agents</h1>
 <form class="check" id="srvcheck" method="get" action="https://toolweather.toolweather.workers.dev/v1/is_safe_to_call"><label for="srvq">Check a server</label><input id="srvq" name="server" placeholder="Registry name or MCP URL" autocomplete="off"><button class="btn" type="submit">Check</button></form>

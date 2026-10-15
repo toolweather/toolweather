@@ -11,6 +11,25 @@ One connection (`https://toolweather.toolweather.workers.dev/mcp`) gives you fou
 
 Free to try. No signup. Connect with no key (50 calls/day). `get_api_key` raises the quota to 1,000 calls/day and 3 watches (the key is shown once; then send `X-API-Key`). Same key via `POST https://toolweather.toolweather.workers.dev/v1/keys`.
 
+Copy this MCP config (anonymous, no key, no Authorization header). Same blocks on https://toolweather.pages.dev/#install
+
+Cursor (`~/.cursor/mcp.json`):
+
+    {"mcpServers":{"toolweather":{"url":"https://toolweather.toolweather.workers.dev/mcp"}}}
+
+Claude Code (`.mcp.json`; `"type": "http"` is required, or Claude Code treats the entry as stdio and skips it):
+
+    {"mcpServers":{"toolweather":{"type":"http","url":"https://toolweather.toolweather.workers.dev/mcp"}}}
+
+Claude Desktop (`claude_desktop_config.json`, via mcp-remote):
+
+    {"mcpServers":{"toolweather":{"command":"npx","args":["-y","mcp-remote","https://toolweather.toolweather.workers.dev/mcp"]}}}
+
+Smithery / remote HTTP URL (Smithery HTTP config is `type` plus `url` only):
+
+    https://toolweather.toolweather.workers.dev/mcp
+    {"type":"http","url":"https://toolweather.toolweather.workers.dev/mcp"}
+
 Cursor install deeplink (base64 config is `{"url":"https://toolweather.toolweather.workers.dev/mcp"}`): `cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9`
 
 IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-urllib/x.y` User-Agent with `HTTP 403` and body `error code: 1010`, before the request reaches Toolweather. This affects every free `*.workers.dev` and `*.pages.dev` address and cannot be turned off there. Fix: send any other User-Agent:
@@ -49,8 +68,8 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 
 ## Docs
 
-- [README and install snippets (Claude Desktop, Cursor, VS Code)](https://github.com/toolweather/toolweather#install)
-- [Live status page](https://toolweather.pages.dev)
+- [README and install snippets (Cursor, Claude Desktop, Claude Code, Smithery, VS Code)](https://github.com/toolweather/toolweather#install)
+- [Live status page, copy-this-config cards](https://toolweather.pages.dev/#install)
 - [MCP readiness leaderboard](https://toolweather.pages.dev/servers/) and one status page per probed server (`/servers/<slug>/`). Free README badge: [badge_readme.md](https://github.com/toolweather/toolweather/blob/main/badge_readme.md).
 - [Official MCP registry entry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.toolweather%2Ftoolweather/versions/latest): `io.github.toolweather/toolweather`
 - Sister Upstream site: https://upstream-api.pages.dev

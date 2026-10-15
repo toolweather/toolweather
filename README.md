@@ -23,6 +23,8 @@ Free to try. No signup. Connect with no key (50 calls/day). Call `get_api_key` (
 
 You can also mint a key first with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys`, or click **Get a free key** on https://toolweather.pages.dev.
 
+The same anonymous configs are copyable on the status page: https://toolweather.pages.dev/#install (and on the [leaderboard](https://toolweather.pages.dev/servers/)).
+
 ### Add to Cursor
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9)
@@ -78,6 +80,25 @@ claude mcp add --transport http toolweather https://toolweather.toolweather.work
       "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp"]
     }
   }
+}
+```
+
+### Smithery / remote HTTP
+
+Public streamable HTTP. No API key on the free tier (50 calls/day). No `Authorization` header.
+
+Paste the URL into [Smithery](https://smithery.ai/docs/build/publish) or any remote HTTP client. Cline (`cline_mcp_settings.json`) uses this same URL:
+
+```text
+https://toolweather.toolweather.workers.dev/mcp
+```
+
+Smithery's HTTP config is `type` plus `url` only ([deep linking](https://smithery.ai/docs/use/deep-linking)):
+
+```json
+{
+  "type": "http",
+  "url": "https://toolweather.toolweather.workers.dev/mcp"
 }
 ```
 
