@@ -9,4 +9,7 @@ node_modules/
 __pycache__/
 .wrangler/
 site/preview*.png
+# Regenerated every probe into the Pages deploy (build_servers.py).
+site/servers/
+site/sitemap.xml
 launch/

@@ -48,6 +48,7 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 
 - [README and install snippets (Claude Desktop, Cursor, VS Code)](https://github.com/toolweather/toolweather#install)
 - [Live status page](https://toolweather.pages.dev)
+- [MCP readiness leaderboard](https://toolweather.pages.dev/servers/) and one status page per probed server (`/servers/<slug>/`). Free README badge: [badge_readme.md](https://github.com/toolweather/toolweather/blob/main/badge_readme.md).
 - [Official MCP registry entry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.toolweather%2Ftoolweather/versions/latest): `io.github.toolweather/toolweather`
 - Sister Upstream site: https://upstream-api.pages.dev
 - SpendGate: https://spendgate.toolweather.workers.dev

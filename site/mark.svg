@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="168 168 464 464">
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="540" viewBox="140 140 540 540">
   <defs>
     <clipPath id="ca"><rect x="200" y="200" width="400" height="400" rx="108"/></clipPath>
     <filter id="blura" x="-30%" y="-30%" width="160%" height="160%">
@@ -24,10 +24,16 @@
       <stop offset="100%" stop-color="#6A5B4A" stop-opacity="0.22"/>
     </radialGradient>
   </defs>
+
+  <!-- outer shell / plaque sitting in front -->
   <rect x="178" y="178" width="444" height="444" rx="128" fill="url(#rima)" filter="url(#shella)"/>
   <rect x="178" y="178" width="444" height="444" rx="128" fill="none" stroke="#6A5B4A" stroke-width="14"/>
+
+  <!-- recessed window opening -->
   <rect x="200" y="200" width="400" height="400" rx="108" fill="#BEB09A"/>
+
   <g clip-path="url(#ca)">
+    <!-- weather INSIDE (softened / recessed) -->
     <g filter="url(#blura)" opacity="0.95">
       <rect x="200" y="200" width="400" height="400" fill="#C9BBA6"/>
       <path d="M150 290 C260 250 340 330 430 285 C520 240 590 310 670 275" fill="none" stroke="#E2D9CB" stroke-width="22" stroke-linecap="round"/>
@@ -36,10 +42,16 @@
       <path d="M150 485 C255 445 350 525 440 470 C530 415 600 495 670 460" fill="none" stroke="#E2D9CB" stroke-width="20" stroke-linecap="round"/>
       <circle cx="360" cy="360" r="70" fill="#EFE9DE" opacity="0.25"/>
     </g>
+    <!-- inner wall shadow: weather sits deeper -->
     <rect x="200" y="200" width="400" height="400" fill="url(#recessa)"/>
+    <!-- glass sheen on the front plane -->
     <rect x="200" y="200" width="400" height="400" fill="url(#glassa)"/>
   </g>
+
+  <!-- window lip / front frame edge -->
   <rect x="200" y="200" width="400" height="400" rx="108" fill="none" stroke="#6A5B4A" stroke-width="6" opacity="0.35"/>
+
+  <!-- FACE UP FRONT -->
   <g filter="url(#lifta)">
     <rect x="318" y="312" width="24" height="62" rx="12" fill="#6A5B4A"/>
     <rect x="458" y="312" width="24" height="62" rx="12" fill="#6A5B4A"/>

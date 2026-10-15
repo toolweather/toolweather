@@ -57,7 +57,8 @@ jobs:
         with: { path: registry_cache.json, key: "registry-${{ github.run_id }}" }
       - name: Ingest to D1
         run: python scripts/ingest_d1.py
-      - name: Build + deploy status page
+      - name: Build + deploy status page, leaderboard, and per-server pages
         run: |
+          python build_servers.py --check
           python build_site.py
           npx -y wrangler@4 pages deploy site --project-name toolweather --branch main --commit-dirty=true
