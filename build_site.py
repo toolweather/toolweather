@@ -24,7 +24,7 @@ changes = c.execute("""SELECT e.server_name, c.severity, c.kind, c.tool, c.ts FR
 last = max(r["ts"] for r in rows); esc = html.escape
 when = datetime.datetime.fromtimestamp(last, datetime.timezone.utc).strftime("%b %d, %Y %H:%M UTC")
 total = len(rows); pct = lambda n: f"{100*n/max(total,1):.0f}%"
-rd_order = [("dual", "Dual-era (2026-07-28 + legacy)", "#3f8f8a"), ("modern_only", "2026-07-28 only", "#8fb8d8"),
+rd_order = [("dual", "Dual-era (2026-07-28 + legacy)", "#7A8F66"), ("modern_only", "2026-07-28 only", "#A67C52"),
             ("legacy_only", "Legacy only — not ready", "var(--leg)")]
 rd_tot = sum(ready.values()) or 1
 bar = "".join(f'<div style="width:{100*ready.get(k,0)/rd_tot:.1f}%;background:{col}" title="{lab}"></div>' for k, lab, col in rd_order)
@@ -41,23 +41,102 @@ _cursor_cfg = json.dumps({"url": _mcp_url}, separators=(",", ":"))
 _cursor_b64 = base64.b64encode(_cursor_cfg.encode()).decode()
 cursor_deeplink = "cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=" + _cursor_b64
 cursor_href = html.escape(cursor_deeplink, quote=True)
+# ISOBAR v14. Light surfaces and --clay are the locked parchment hexes.
+# --acc is clay darkened to #7A5432 so small links clear contrast on paper;
+# display clay (wordmark, rules, mascot bead) stays #A67C52.
+# Dark is the same family (warm brown, not cool gray); clay is lifted so it
+# stays readable on night paper.
 suite_css = """
-.hero{color:var(--h);font-size:22px;font-weight:600;letter-spacing:-.02em;margin:8px 0 14px}
+:root{
+  --paper:#F0EBE3;--plate:#D9CDB8;--ink:#6A5B4A;--clay:#A67C52;--mute:#7A7064;--wash:#E2D9CB;
+  --ok:#7A8F66;--warn:#C4A35A;--danger:#B86B5A;--spend:#A89070;
+  --bg:var(--paper);--card:#F7F3EC;--line:var(--plate);--row:var(--wash);
+  --txt:var(--ink);--h:var(--ink);--mut:var(--mute);--acc:#7A5432;--leg:#8C7B68;
+  --okb:#E4EBD8;--okt:#3E5230;--badb:#F3E3DC;--badt:#8C4538;
+  --display:"Cormorant Garamond","EB Garamond",Georgia,serif;
+  --sans:"IBM Plex Sans","Avenir Next",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+  color-scheme:light
+}
+:root[data-theme=dark]{
+  --paper:#1C1712;--plate:#4A3E32;--ink:#E8DFD2;--clay:#C4A07A;--mute:#B5A794;--wash:#3A3128;
+  --ok:#A3B68A;--warn:#D4B56A;--danger:#D08B7A;--spend:#C4B09A;
+  --bg:#1C1712;--card:#2A231B;--line:#4A3E32;--row:#342C23;
+  --txt:#E8DFD2;--h:#F3EBDF;--mut:#B5A794;--acc:var(--clay);--leg:#6B5E50;
+  --okb:#2A3324;--okt:#C5D4AE;--badb:#3A2822;--badt:#E7BDB2;
+  color-scheme:dark
+}
+.tg{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:999px;padding:5px 12px;font:500 13px var(--sans);cursor:pointer;margin-left:12px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 var(--sans)}
+a{color:var(--acc);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
+.wrap{position:relative;z-index:0;max-width:1120px;margin:0 auto;padding:32px 24px 64px}
+.isobars{position:absolute;top:0;left:0;width:100%;height:210px;pointer-events:none;z-index:0;color:#8C7B68;opacity:.34;-webkit-mask-image:linear-gradient(#000 42%,transparent);mask-image:linear-gradient(#000 42%,transparent)}
+:root[data-theme=dark] .isobars{color:#E2D9CB;opacity:.08}
+.wrap>*:not(.isobars){position:relative;z-index:1}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:500;font-size:30px;letter-spacing:.02em;line-height:1;color:var(--ink)}
+.mark{width:42px;height:42px;display:block;flex:none}
+.logo span{color:var(--clay)}
+.live{color:var(--mut);font-family:var(--mono);font-size:12px;letter-spacing:.02em}
+.live i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--clay);margin-right:6px}
+h1{font-family:var(--display);font-weight:500;color:var(--h);font-size:42px;letter-spacing:.015em;line-height:1.15;margin:32px 0 6px}
+h1::before{content:"";display:block;width:36px;height:2px;background:var(--clay);margin:0 0 14px}
+.sub{color:var(--mut);margin:0 0 28px;font-size:17px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.stat b{display:block;font-family:var(--sans);font-weight:500;font-size:28px;letter-spacing:0;font-variant-numeric:tabular-nums;color:var(--ink)}
+.stat span{color:var(--mut);font-size:13px}
+.grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;margin-top:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+h2{font-family:var(--sans);font-weight:500;font-size:16px;letter-spacing:.01em;margin:0 0 14px;color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;color:var(--mut);font-weight:500;padding:6px 4px;border-bottom:1px solid var(--line)}
+td{padding:8px 4px;border-bottom:1px solid var(--row);vertical-align:top}
+.nm{font-weight:500}.u{color:var(--mut);font-size:12px}
+.pill{font-family:var(--sans);font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.ok{background:var(--okb);color:var(--okt)}.bad{background:var(--badb);color:var(--badt)}
+.bar{display:flex;height:14px;border-radius:8px;overflow:hidden;margin:6px 0 14px;background:var(--row)}
+ul{list-style:none;padding:0;margin:0}
+.legend li{display:flex;align-items:center;gap:8px;padding:5px 0}
+.legend b{margin-left:auto}.legend em{color:var(--mut);width:40px;text-align:right;font-style:normal}
+.dot{width:10px;height:10px;border-radius:3px}
+pre{background:#2A241C;border:1px solid #4A3F34;border-radius:12px;padding:14px;overflow:auto;margin:0;color:#E7DDD0;font:12.5px/1.55 var(--mono);white-space:pre-wrap;word-break:break-all}
+:root[data-theme=dark] pre{background:#14110E;border-color:#3E342A}
+.u{word-break:break-all}
+.chg li{overflow-wrap:anywhere;padding:6px 0;border-bottom:1px solid var(--row);font-size:13.5px}
+code{font-family:var(--mono);font-size:.92em;color:var(--ink);background:var(--wash);border-radius:4px;padding:1px 5px}
+pre code{background:none;color:inherit;padding:0}
+.badge{display:inline-flex;font:500 12px/1 var(--sans);border-radius:5px;overflow:hidden;margin:4px 8px 4px 0;color:#F0EBE3}
+.badge span{padding:6px 8px}
+.b1{background:#5C5348}.b2{background:#7A8F66}.b3{background:#C4A35A}.b4{background:#A67C52}
+footer{color:var(--mut);font-size:12px;margin-top:28px}
+.btn{background:#6E4C32;color:#F7F3EC;border:0;border-radius:10px;padding:8px 16px;font:500 14px var(--sans);cursor:pointer}
+.btn:hover{background:#5E402A}
+.btn:disabled{opacity:.65;cursor:progress}
+:root[data-theme=dark] .btn{background:#A67C52;color:#1C1712}
+:root[data-theme=dark] .btn:hover{background:#B88B60}
+.hero{font-family:var(--display);color:var(--ink);font-size:28px;font-weight:500;letter-spacing:.015em;line-height:1.2;margin:8px 0 16px}
 .products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:0 0 18px}
-.products .card{padding:16px}.products h2{font-size:15px;margin:0 0 4px}
+.products .card{padding:16px 16px 18px;border-top:2px solid var(--clay)}
+.products .card:nth-child(3){border-top-color:var(--spend)}
+.products h2{font-family:var(--display);font-size:26px;font-weight:500;letter-spacing:.01em;margin:0 0 6px;color:var(--ink)}
 .products p{margin:0 0 10px;color:var(--mut);font-size:13.5px}
 .tools{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:0}
-.tools code{color:var(--h);background:var(--row);border-radius:6px;padding:2px 6px;font-size:12px}
+.tools code{color:var(--ink);background:var(--wash);border-radius:6px;padding:2px 6px;font-size:12px}
 .install{margin-bottom:22px}.try{margin:0 0 12px;font-size:14.5px}
 .cfg{margin-top:14px}.cfgh{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
-.cfgh h3{margin:0;font-size:14px}.cfgh span{color:var(--mut);font-size:12.5px}
-.copy{margin-left:auto;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:3px 10px;font:13px inherit;cursor:pointer}
+.cfgh h3{margin:0;font-size:14px;font-weight:500}.cfgh span{color:var(--mut);font-size:12.5px;font-family:var(--mono)}
+.copy{margin-left:auto;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:3px 10px;font:500 13px var(--sans);cursor:pointer}
 .addcursor{display:inline-flex;margin:0 0 12px}.addcursor img{height:32px;width:auto}
 .addcursor .for-dark{display:none}
 :root[data-theme=dark] .addcursor .for-light{display:none}
 :root[data-theme=dark] .addcursor .for-dark{display:inline}
 .install pre{white-space:pre;word-break:normal;overflow:auto}
-@media(max-width:800px){.products{grid-template-columns:1fr}.hero{font-size:18px}}
+@media(max-width:980px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:800px){.products{grid-template-columns:1fr}.hero{font-size:24px}h1{font-size:34px}.grid{grid-template-columns:1fr}}
+@media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.wrap{padding:24px 16px 48px}}
 """
 suite_html = f"""<p class="hero">One connection gives you three tools.</p>
 <div class="products">
@@ -128,29 +207,14 @@ document.querySelectorAll("[data-copy]").forEach(function(b){{
 </script>"""
 page = f"""<!doctype html><html lang="en"><head><link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt"><link rel="service-desc" type="application/json" href="https://toolweather.toolweather.workers.dev/openapi.json"><link rel="mcp-server-card" type="application/json" href="/.well-known/mcp"><script>(function(){{var t=localStorage.getItem("tw-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t}})();
 function twToggle(){{var d=document.documentElement,t=d.dataset.theme==="dark"?"light":"dark";d.dataset.theme=t;localStorage.setItem("tw-theme",t);document.getElementById("tg").textContent=t==="dark"?"Light mode":"Dark mode"}}</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Toolweather — MCP health, API status, and spend checks for agents</title><style>
-:root{{--bg:#f7f6f2;--card:#ffffff;--line:#e3e1da;--row:#efede7;--txt:#2b2f36;--h:#1f2329;--mut:#6b7280;--acc:#3f8f8a;--leg:#d6d2c8;--okb:#e4f1ef;--okt:#2f6f6b;--badb:#f6e7e4;--badt:#a2463a;color-scheme:light}}
-:root[data-theme=dark]{{--bg:#1c1f24;--card:#252a31;--line:#343a43;--row:#2e333b;--txt:#d9dde3;--h:#f1f3f5;--mut:#9aa3ae;--acc:#5fb3ab;--leg:#5a616b;--okb:#21403d;--okt:#8fd3cb;--badb:#47292a;--badt:#f0a59b;color-scheme:dark}}
-.tg{{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:999px;padding:5px 12px;font:13px inherit;cursor:pointer;margin-left:12px}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif}}
-.wrap{{max-width:1120px;margin:0 auto;padding:32px 24px 64px}}header{{display:flex;justify-content:space-between;align-items:center}}
-.logo{{display:flex;align-items:center;gap:10px;font-weight:700;font-size:21px;letter-spacing:-.02em}}.logo span{{color:var(--acc)}}.live{{color:var(--mut);font-size:13px}}.live i{{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--acc);margin-right:6px}}
-h1{{color:var(--h);font-size:38px;letter-spacing:-.03em;margin:36px 0 6px}}.sub{{color:var(--mut);margin:0 0 28px;font-size:17px}}
-.stats{{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}}.stat{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.03)}}
-.stat b{{display:block;font-size:28px;letter-spacing:-.02em}}.stat span{{color:var(--mut);font-size:13px}}
-.grid{{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;margin-top:18px}}.card{{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}}
-h2{{font-size:16px;margin:0 0 14px}}table{{width:100%;border-collapse:collapse;font-size:13.5px}}th{{text-align:left;color:var(--mut);font-weight:500;padding:6px 4px;border-bottom:1px solid var(--line)}}
-td{{padding:8px 4px;border-bottom:1px solid var(--row);vertical-align:top}}.nm{{font-weight:600}}.u{{color:var(--mut);font-size:12px}}
-.pill{{font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap}}.ok{{background:var(--okb);color:var(--okt)}}.bad{{background:var(--badb);color:var(--badt)}}
-.bar{{display:flex;height:14px;border-radius:8px;overflow:hidden;margin:6px 0 14px}}ul{{list-style:none;padding:0;margin:0}}
-.legend li{{display:flex;align-items:center;gap:8px;padding:5px 0}}.bar{{background:var(--row)}}.legend b{{margin-left:auto}}.legend em{{color:var(--mut);width:40px;text-align:right;font-style:normal}}.dot{{width:10px;height:10px;border-radius:3px}}
-pre{{background:#2b2f36;border:1px solid var(--line);border-radius:12px;padding:14px;overflow:auto;font-size:12.5px;color:#e7e5df;margin:0}}
-pre{{white-space:pre-wrap;word-break:break-all}}.u{{word-break:break-all}}.chg li{{overflow-wrap:anywhere;padding:6px 0;border-bottom:1px solid var(--row);font-size:13.5px}}code{{color:#3f8f8a}}
-.badge{{display:inline-flex;font:600 12px/1 Verdana,sans-serif;border-radius:5px;overflow:hidden;margin:4px 8px 4px 0}}.badge span{{padding:6px 8px}}
-.badge{{color:#fff}}.b1{{background:#4b5563}}.b2{{background:#3f8f8a}}.b3{{background:#b7791f}}.b4{{background:#5b84b1}}footer{{color:var(--mut);font-size:12px;margin-top:28px}}
+<title>Toolweather — MCP health, API status, and spend checks for agents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
 {suite_css}
 </style></head><body><div class="wrap">
-<header><div class="logo"><svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><circle cx="15" cy="15" r="7" fill="#f2c46d"/><g stroke="#f2c46d" stroke-width="2.2" stroke-linecap="round"><path d="M15 3v2.5M3 15h2.5M6.5 6.5l1.8 1.8M23.5 6.5l-1.8 1.8"/></g><path d="M13 31a6 6 0 0 1 1-11.9A8 8 0 0 1 29.3 21 5 5 0 0 1 29 31z" fill="var(--card)" stroke="#3f8f8a" stroke-width="2.2" stroke-linejoin="round"/></svg><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check {when}<button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
+<svg class="isobars" viewBox="0 0 1200 280" preserveAspectRatio="none" aria-hidden="true"><path d="M-40 78 C 150 28, 280 148, 450 74 S 740 8, 940 92 S 1160 168, 1280 64" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M-40 142 C 170 92, 310 202, 490 132 S 800 52, 1000 148 S 1200 214, 1300 132" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/><path d="M-20 206 C 190 156, 350 266, 550 196 S 880 116, 1100 206 S 1280 266, 1340 196" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+<header><div class="logo"><img class="mark" src="mark.svg" width="42" height="42" alt=""><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check {when}<button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
 <h1>MCP health, API status, and spend checks for agents</h1>
 {suite_html}
 <div class="stats"><div class="stat"><b>{total:,}</b><span>servers monitored</span></div><div class="stat"><b>{pct(by.get('ok',0))}</b><span>healthy (open)</span></div>
@@ -161,7 +225,7 @@ pre{{white-space:pre-wrap;word-break:break-all}}.u{{word-break:break-all}}.chg l
 <div class="card" style="margin-top:18px"><h2>Recently broken</h2><table><tr><th>Server</th><th style="width:120px">Error</th></tr>{brk_html}</table></div></div></div>
 <div class="card" id="accuracy" style="margin-bottom:18px"><h2>Track record</h2><p class="sub" style="margin:4px 0 10px">How often a verdict still held at the very next scheduled check of the same server (usually ~15 minutes later). This measures how stable our verdicts are between checks, not whether real tool calls succeed. History starts Oct 15, 2026, so samples are still small. <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/v1/accuracy">Raw data</a></p><div id="accout">Loading…</div></div>
 <div class="card" id="key" style="margin-bottom:18px"><h2>Get a free API key</h2><p class="sub" style="margin:4px 0 10px">No signup. With no key you get 50 checks/day. <code>get_api_key</code> (or this button, or <code>POST /v1/keys</code>) raises that to 1,000 checks/day and 3 change-alert watches. The key is shown once.</p>
-<button id="getkey" style="padding:8px 16px;border-radius:8px;border:0;background:var(--acc);color:#fff;font-weight:600;cursor:pointer">Get a free key</button>
+<button id="getkey" class="btn" type="button">Get a free key</button>
 <pre id="keyout" style="display:none;margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre></div>
 <div class="card" id="pricing" style="margin-bottom:18px"><h2>Pricing</h2><p class="sub" style="margin:4px 0 10px">Zero signup. Agents start free (no key needed), then pay per call in USDC on Base via <a style="color:var(--acc)" href="https://www.x402.org">x402</a> — no account, no subscription. You're never charged for errors.</p><table><tr><th>What</th><th>Free</th><th>Beyond free</th></tr><tr><td>Health check (MCP tool or <code>/v1/is_safe_to_call</code>)</td><td>1,000/day per key, or 50/day anonymous (no key)</td><td>$0.001 per call</td></tr><tr><td>Live recheck (<code>fresh=true</code> or your own token)</td><td>200/day per key</td><td>$0.003 per call</td></tr><tr><td>Find alternatives</td><td>Within the free daily quota</td><td>$0.001 per call</td></tr><tr><td>Batch check, up to 25 servers</td><td>Each server counts as 1 call</td><td>$0.01 per batch</td></tr><tr><td>Change-alert watches</td><td>3 per key</td><td>$0.05 per extra watch per 30 days</td></tr><tr><td>Upstream tools (API status, model deprecations)</td><td colspan="2">Upstream's own free quota and prices</td></tr><tr><td>SpendGate tools (<code>score_spend</code>, <code>get_quota</code>, <code>spendgate_get_api_key</code>)</td><td colspan="2">SpendGate's own free quota and prices</td></tr></table><p class="sub" style="margin-top:8px">Every metered response carries <code>X-Free-Remaining</code> and <code>X-Price-After-Free</code> (and a <code>quota</code> body field) so agents can plan. Machine-readable: <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/v1/pricing">/v1/pricing</a> · <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/.well-known/x402">/.well-known/x402</a></p></div>
 <div class="grid"><div class="card"><h2>For agents: ask before you call</h2><pre>curl -H "X-API-Key: $TW_KEY" \\
