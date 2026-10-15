@@ -34,6 +34,12 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 
 - [Breaking-changes digest](https://upstream-api.pages.dev/digest/): free daily summary of breaking MCP tool changes, servers going down/back, broken OAuth logins, plus AI/dev API incidents and model retirements (from the sister project Upstream). JSON: https://upstream.toolweather.workers.dev/digest/latest · Atom: https://upstream.toolweather.workers.dev/digest/feed.xml
 
+## Legal
+
+- [Terms of Service](https://toolweather.pages.dev/terms)
+- [Privacy Policy](https://toolweather.pages.dev/privacy)
+- Contact: toolweather@mail.grokbot.com (operator: Toolweather, Mexico)
+
 ## Optional
 
 - [Probing policy](https://github.com/toolweather/toolweather#probing-policy-read-only): read-only, at most one request per host in flight, opt-out by email.

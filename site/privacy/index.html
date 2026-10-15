@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Policy · Toolweather</title><style>:root{--bg:#fbfbf9;--fg:#1b1d21;--mut:#626873;--acc:#2f6f5e;--bd:#e3e3df}@media (prefers-color-scheme:dark){:root{--bg:#121417;--fg:#e7e8ea;--mut:#9aa1ab;--acc:#6fc2a8;--bd:#2a2e34}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}main{max-width:760px;margin:0 auto;padding:40px 20px 80px}h1{font-size:1.8rem}h2{font-size:1.1rem;margin-top:1.8em}a{color:var(--acc)}.mut{color:var(--mut)}footer{border-top:1px solid var(--bd);margin-top:40px;padding-top:12px;font-size:14px}</style></head><body><main>
+<p><a href="/">← Toolweather</a></p><h1>Privacy Policy</h1><p class="mut">Last updated October 15, 2026. Operator: Toolweather, Mexico. Contact: <a href="mailto:toolweather@mail.grokbot.com">toolweather@mail.grokbot.com</a></p>
+<p>Short version: we store as little as we can. No accounts, no cookies, no ad tracking, no raw IP addresses.</p>
+<h2>What we store</h2><ul>
+<li><b>API keys:</b> only a one-way hash of your key, plus its creation time and daily usage. We can't see or recover your key.</li>
+<li><b>IP addresses:</b> never stored raw. To limit key creation and count visits, we keep a short hash of your IP (and, for visit counts, your browser's user-agent) salted with a secret and the current day, so it can't be linked across days.</li>
+<li><b>Usage counts:</b> which endpoints and servers a key checks, per day, so we can enforce limits and improve the service.</li>
+<li><b>Change-alert watches:</b> the server you watch, your webhook URL and its signing secret, and delivery history.</li>
+<li><b>Tokens you send for a one-time check:</b> used once for that check and never stored or logged.</li>
+<li><b>Email:</b> Toolweather has no mailing list. If you email us, we keep the conversation to answer you. The daily digest signup is part of Upstream and is covered by <a href="https://upstream-api.pages.dev/privacy">Upstream's privacy policy</a>.</li>
+<li><b>MCP server data:</b> public information about MCP servers (names, URLs, tool lists, health results). This isn't personal data.</li></ul>
+<h2>What we don't do</h2><p>No cookies or analytics trackers, no selling data, no profiling.</p>
+<h2>Who processes data for us</h2><p>The service runs on Cloudflare (Workers, D1 database, Pages), which processes requests to deliver them, and the code lives on GitHub. We don't sell or share personal data with anyone else, and we don't use advertising trackers or cookies.</p>
+<h2>How long we keep it</h2><p>Daily usage counters and IP hashes are only needed for the current day's limits; we delete them over time and they can't be linked across days. Key records and webhook settings are kept while they're in use. Email addresses are kept until you unsubscribe or ask us to delete them.</p>
+<h2>Your choices</h2><p>You can ask us to show, correct or delete data linked to your key, webhook or email address, or object to its use, by emailing <a href="mailto:toolweather@mail.grokbot.com">toolweather@mail.grokbot.com</a>. Because we only store hashes, we may need the key itself to find its records. Data on a public blockchain can't be deleted by anyone.</p>
+<h2>Children</h2><p>The service is meant for developers and is not directed at children.</p>
+<h2>Changes</h2><p>We'll update this page if our practices change, with a new date at the top.</p>
+<footer class="mut"><a href="/">Toolweather</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="mailto:toolweather@mail.grokbot.com">Contact</a></footer></main></body></html>
