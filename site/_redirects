@@ -1,0 +1,4 @@
+/.well-known/mcp /server-card.json 200
+/.well-known/mcp.json /server-card.json 200
+/.well-known/mcp/server-card /server-card.json 200
+/mcp/server-card /server-card.json 200

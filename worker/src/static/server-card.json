@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+  "name": "io.github.toolweather/toolweather",
+  "version": "1.0.0",
+  "title": "Toolweather",
+  "description": "Live health checks for MCP servers: is a server/tool safe to call now, plus alternatives.",
+  "websiteUrl": "https://toolweather.pages.dev",
+  "repository": {
+    "url": "https://github.com/toolweather/toolweather",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://toolweather.toolweather.workers.dev/mcp",
+      "headers": [
+        {
+          "name": "X-API-Key",
+          "description": "Free API key (1,000 calls/day). Email toolweather@mail.grokbot.com.",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ],
+      "supportedProtocolVersions": [
+        "2026-07-28",
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26"
+      ]
+    }
+  ],
+  "_meta": {
+    "io.github.toolweather/links": {
+      "openapi": "https://toolweather.toolweather.workers.dev/openapi.json",
+      "llms_txt": "https://toolweather.pages.dev/llms.txt",
+      "status_page": "https://toolweather.pages.dev"
+    }
+  }
+}

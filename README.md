@@ -10,6 +10,59 @@ for the 2026-07-28 spec, and whether it needs auth.
 - MCP endpoint (streamable HTTP): https://toolweather.toolweather.workers.dev/mcp
 - Contact: toolweather@mail.grokbot.com
 
+## Install
+
+Get a free key (1,000 calls/day) by emailing toolweather@mail.grokbot.com, then add the remote MCP server.
+
+**Claude Desktop** (`claude_desktop_config.json`; uses the `mcp-remote` bridge):
+
+```json
+{
+  "mcpServers": {
+    "toolweather": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp",
+               "--header", "X-API-Key:${TW_KEY}"],
+      "env": { "TW_KEY": "<your-key>" }
+    }
+  }
+}
+```
+
+**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "toolweather": {
+      "url": "https://toolweather.toolweather.workers.dev/mcp",
+      "headers": { "X-API-Key": "<your-key>" }
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`):
+
+```json
+{
+  "inputs": [{ "type": "promptString", "id": "tw-key", "description": "Toolweather API key", "password": true }],
+  "servers": {
+    "toolweather": {
+      "type": "http",
+      "url": "https://toolweather.toolweather.workers.dev/mcp",
+      "headers": { "X-API-Key": "${input:tw-key}" }
+    }
+  }
+}
+```
+
+**Claude Code:** `claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp --header "X-API-Key: <your-key>"`
+
+Discovery files: [OpenAPI 3.1](https://toolweather.toolweather.workers.dev/openapi.json) ·
+[MCP server card](https://toolweather.toolweather.workers.dev/.well-known/mcp) ·
+[llms.txt](https://toolweather.pages.dev/llms.txt) · registry name `io.github.toolweather/toolweather`.
+
 ## API
 
 ```bash

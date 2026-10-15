@@ -1,4 +1,6 @@
 // Toolweather API + MCP endpoint on Cloudflare Workers (free tier). Verdicts are precomputed at ingest.
+import CARD from "./static/server-card.json";
+import OPENAPI from "./static/openapi.json";
 const STALE_MS = 3600_000 * 1.5;
 const MODERN = "2026-07-28";
 const J = (o, s = 200, h = {}) => new Response(JSON.stringify(o, null, 2), { status: s, headers: { "content-type": "application/json", "access-control-allow-origin": "*", ...h } });
@@ -137,6 +139,8 @@ export default {
       const m = await env.DB.prepare("SELECT v FROM meta WHERE k='last_ingest'").first();
       return J({ ok: true, last_ingest: m && m.v });
     }
+    if (["/.well-known/mcp", "/.well-known/mcp.json", "/.well-known/mcp/server-card", "/mcp/server-card", "/server-card"].includes(p)) return J(CARD, 200, { "cache-control": "max-age=3600" });
+    if (p === "/openapi.json") return J(OPENAPI, 200, { "cache-control": "max-age=3600" });
     if (p === "/v1/hit") return hit(req, env, ctx, url);
     if (p === "/mcp") {
       if (req.method === "GET") return new Response("method not allowed", { status: 405 });
@@ -162,7 +166,7 @@ export default {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + rw}" height="20" role="img" aria-label="toolweather: ${txt}"><rect width="${lw}" height="20" rx="3" fill="#4b5563"/><rect x="${lw}" width="${rw}" height="20" rx="3" fill="${col}"/><rect x="${lw - 3}" width="6" height="20" fill="${col}"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="8" y="14">toolweather</text><text x="${lw + 6}" y="14">${txt}</text></g></svg>`;
       return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=300" } });
     }
-    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", endpoints: ["/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/mcp", "/health"] });
+    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", endpoints: ["/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
 };

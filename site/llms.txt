@@ -1,0 +1,23 @@
+# Toolweather
+
+> Toolweather tells AI agents whether an MCP server or tool is safe to call right now, and suggests working alternatives. It checks ~2,000 remote MCP servers from the official MCP registry every 15 minutes (handshake, auth, latency, tool lists, breaking tool changes, 2026-07-28 spec readiness). Checks are read-only: tools are never called.
+
+Free tier: 1,000 calls per API key per day. Get a key by emailing toolweather@mail.grokbot.com.
+
+## Use it
+
+- [MCP endpoint (streamable HTTP)](https://toolweather.toolweather.workers.dev/mcp): tools `is_safe_to_call(server, tool?)` and `suggest_alternatives(query, limit?)`. Send header `X-API-Key: <key>`. Answers 2026-07-28 `server/discover` and legacy `initialize`.
+- [REST: is_safe_to_call](https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server=io.github.owner/name): returns `verdict` (safe / caution / unsafe / unknown), reasons, status, latency, auth info, last tool change, `last_checked`.
+- [REST: suggest_alternatives](https://toolweather.toolweather.workers.dev/v1/suggest_alternatives?q=send%20email): working servers with similar tools.
+- [OpenAPI 3.1 spec](https://toolweather.toolweather.workers.dev/openapi.json)
+- [MCP server card](https://toolweather.toolweather.workers.dev/.well-known/mcp)
+
+## Docs
+
+- [README and install snippets (Claude Desktop, Cursor, VS Code)](https://github.com/toolweather/toolweather#install)
+- [Live status page](https://toolweather.pages.dev)
+- [Official MCP registry entry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.toolweather%2Ftoolweather/versions/latest): `io.github.toolweather/toolweather`
+
+## Optional
+
+- [Probing policy](https://github.com/toolweather/toolweather#probing-policy-read-only): read-only, at most one request per host in flight, opt-out by email.
