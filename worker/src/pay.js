@@ -16,6 +16,7 @@ export const PRICE_TABLE = [
   { item: "watch (change-alert webhook)", free: "3 per key", paid: PRICES.watch + " per extra watch per 30 days" },
   { item: "Upstream tools (API status, model deprecation, changes)", free: "Upstream's own quota", paid: "Upstream's own prices ($0.003 / $0.003 / $0.01)" },
   { item: "SpendGate tools (score_spend, get_quota, spendgate_get_api_key)", free: "SpendGate's own quota (100/day anonymous, 1,000/day per SpendGate key; get_quota and spendgate_get_api_key are free)", paid: "SpendGate's own price ($0.001 per score)" },
+  { item: "PayCheck tools (check_merchant, paycheck_get_quota, paycheck_get_api_key)", free: "PayCheck's own quota (100/day anonymous or an anon: bundle client, 1,000/day per PayCheck key or hex Toolweather bundle client; paycheck_get_quota and paycheck_get_api_key are free)", paid: "PayCheck's own price ($0.001 per check)" },
 ];
 export const PAY_INFO = (env) => ({
   protocol: "x402 v2", scheme: "exact", network: env.X402_NETWORK, asset: "USDC", pay_to: env.PAY_TO,

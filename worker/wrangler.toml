@@ -18,6 +18,10 @@ service = "upstream"
 binding = "SPENDGATE"
 service = "spendgate"
 
+[[services]]
+binding = "PAYCHECK"
+service = "paycheck"
+
 [triggers]
 crons = ["*/5 * * * *"]
 
