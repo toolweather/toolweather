@@ -11,7 +11,9 @@ plus tool-list changes) and writes:
 
 Called from build_site.py so the probe.yml Pages deploy picks the files up
 with the homepage. Slugs are filesystem-safe forms of registry names
-(`io.github.foo/bar` -> `io.github.foo--bar`).
+(`io.github.foo/bar` -> `io.github.foo--bar`). There is no separate server
+allowlist: every endpoint in the probe DB gets a page, including the four
+`io.github.toolweather/*` remotes mcphealth.py pins into the probe set.
 
 Cloudflare Pages allows about 20,000 files per deployment. PAGE_CAP stays
 under that, after the rest of site/. Every server is still listed on the
@@ -671,6 +673,40 @@ def self_check():
         assert pages == ["com.ufcalendar--fight-api"], pages
         sm = open(os.path.join(tmp, "sitemap.xml"), encoding="utf-8").read()
         assert sm.count("https://toolweather.pages.dev/servers/") == 2  # leaderboard + the one server (prefix)
+    # Our registry names use the same slash-to-double-dash slug the badge links expect.
+    for leaf in ("toolweather", "upstream", "paycheck", "spendgate"):
+        name = f"io.github.toolweather/{leaf}"
+        assert server_slug(name) == f"io.github.toolweather--{leaf}"
+        assert "/" not in server_slug(name)
+    import mcphealth
+    mcphealth.self_check_pins()
+    with tempfile.TemporaryDirectory() as tmp2:
+        pinned = sqlite3.connect(":memory:")
+        pinned.row_factory = sqlite3.Row
+        pinned.executescript(schema)
+        urls = {
+            "toolweather": "https://toolweather.toolweather.workers.dev/mcp",
+            "upstream": "https://upstream.toolweather.workers.dev/mcp",
+            "paycheck": "https://paycheck.toolweather.workers.dev/mcp",
+            "spendgate": "https://spendgate.toolweather.workers.dev/mcp",
+        }
+        for i, leaf in enumerate(("toolweather", "upstream", "paycheck", "spendgate"), 1):
+            name = f"io.github.toolweather/{leaf}"
+            pinned.execute("INSERT INTO endpoints(id, server_name, url, transport, first_seen, last_seen) VALUES(?,?,?,?,?,?)",
+                           (i, name, urls[leaf], "streamable-http", now, now))
+            pinned.execute("""INSERT INTO probes(id, cycle_id, endpoint_id, ts, status, http_status, latency_ms, protocol_version,
+                server_info, tools_hash, tools_json, tool_count, error, era, supports_2026_07_28, legacy_versions, spec_readiness, oauth)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                           (i, 1, i, now, "ok", 200, 80, "2025-06-18", "{}", "h", "[]", 1, None, "legacy", 0, "[]", "legacy_only", None))
+        pinned.commit()
+        info_p = generate(pinned, site_dir=tmp2)
+        for leaf in urls:
+            slug = f"io.github.toolweather--{leaf}"
+            assert info_p["slugs"][f"io.github.toolweather/{leaf}"] == slug
+            text = open(os.path.join(tmp2, "servers", slug, "index.html"), encoding="utf-8").read()
+            assert f"io.github.toolweather/{leaf}" in text
+            assert f"/badge/io.github.toolweather/{leaf}.svg" in text
+            assert f"https://toolweather.pages.dev/servers/{slug}/" in text
     # Collision: alphabetical name keeps the plain slug.
     slugs = assign_slugs(["a/b", "a--b"])
     assert slugs["a--b"] == "a--b"

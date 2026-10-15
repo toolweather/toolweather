@@ -102,6 +102,87 @@ def select_remotes(entries):
                 eps[u] = (s.get("name"), s.get("version"), u, t, score)
     return list(eps.values())
 
+# Our own registry servers. select_remotes scores metadata only (max 8). A cycle
+# keeps --limit of ~28k remotes (2,000 in probe.yml). These four score 7 — repo,
+# website, and title, but no icons — and their URLs sort late inside that band,
+# past the ~250 score-7 slots left after every score-8 remote. They never enter
+# the index, so /badge stays "unknown" and build_servers.py never writes
+# /servers/io.github.toolweather--<name>/. PIN_PRIORITY sits above any registry
+# score so the priority sort keeps them; limit_keeping_pinned also keeps them
+# when --sample ignores priority.
+PIN_PRIORITY = 100
+PINNED_REMOTES = (
+    ("io.github.toolweather/toolweather", "https://toolweather.toolweather.workers.dev/mcp", "streamable-http"),
+    ("io.github.toolweather/upstream", "https://upstream.toolweather.workers.dev/mcp", "streamable-http"),
+    ("io.github.toolweather/paycheck", "https://paycheck.toolweather.workers.dev/mcp", "streamable-http"),
+    ("io.github.toolweather/spendgate", "https://spendgate.toolweather.workers.dev/mcp", "streamable-http"),
+)
+
+def ensure_pinned(eps):
+    """Boost pinned remotes above the --limit cutoff. Add the known endpoint when
+    the registry list does not contain that name or URL yet (version stays empty
+    until a registry row supplies one). A registry row for the same name wins on
+    URL, so a moved endpoint is probed at the published URL."""
+    by_url = {e[2]: e for e in eps}
+    by_name = {}
+    for e in eps:
+        by_name.setdefault(e[0], e)
+    replaced, consumed = {}, set()
+    extras = []
+    for name, url, transport in PINNED_REMOTES:
+        hit = by_url.get(url)
+        if hit:
+            replaced[hit[2]] = (name, hit[1], url, hit[3] or transport, PIN_PRIORITY)
+            consumed.add(hit[2]); continue
+        named = by_name.get(name)
+        if named and named[2] not in consumed:
+            replaced[named[2]] = (named[0], named[1], named[2], named[3] or transport, PIN_PRIORITY)
+            consumed.add(named[2]); continue
+        extras.append((name, "", url, transport, PIN_PRIORITY))
+    return [replaced.get(e[2], e) for e in eps] + extras
+
+def limit_keeping_pinned(eps, limit):
+    """Keep every pinned endpoint inside `limit`, dropping the lowest-priority tail."""
+    by_url, by_name = {}, {}
+    for e in eps:
+        by_url.setdefault(e[2], e); by_name.setdefault(e[0], e)
+    chosen, seen = [], set()
+    for name, url, _t in PINNED_REMOTES:
+        e = by_url.get(url) or by_name.get(name)
+        if e and e[2] not in seen:
+            chosen.append(e); seen.add(e[2])
+    rest = [e for e in eps if e[2] not in seen]
+    if limit is None: return chosen + rest
+    return chosen + rest[:max(0, limit - len(chosen))]
+
+def self_check_pins():
+    """The production cutoff is score 8 (about 1,750 remotes) then the alphabetically
+    earliest score-7 URLs until --limit 2000. These four are score 7 and sort late."""
+    fillers = [(f"io.github.example/s{i}", "1", f"https://a{i:05d}.example/mcp", "streamable-http", 8) for i in range(20)]
+    early7 = [(f"io.github.early/s{i}", "1", f"https://b{i:05d}.example/mcp", "streamable-http", 7) for i in range(10)]
+    late = [(n, "1.2.0", u, t, 7) for n, u, t in PINNED_REMOTES]
+    raw = fillers + early7 + late
+    ordered = sorted(sorted(raw, key=lambda e: e[2]), key=lambda e: -e[4])
+    assert not any(e[0].startswith("io.github.toolweather/") for e in ordered[:20])
+    pinned = ensure_pinned(raw)
+    ordered = sorted(sorted(pinned, key=lambda e: e[2]), key=lambda e: -e[4])
+    kept = limit_keeping_pinned(ordered, 20)
+    assert len(kept) == 20
+    by_name = {e[0]: e for e in kept}
+    for n, u, t in PINNED_REMOTES:
+        assert by_name[n][1] == "1.2.0" and by_name[n][2] == u and by_name[n][3] == t and by_name[n][4] == PIN_PRIORITY
+    added = ensure_pinned(fillers)
+    assert {e[2] for e in added if e[4] == PIN_PRIORITY} == {u for _n, u, _t in PINNED_REMOTES}
+    assert all(e[1] == "" for e in added if e[4] == PIN_PRIORITY)
+    shuffled = list(added)
+    random.Random(0).shuffle(shuffled)
+    sampled = limit_keeping_pinned(shuffled, 10)
+    assert len(sampled) == 10 and {u for _n, u, _t in PINNED_REMOTES} <= {e[2] for e in sampled}
+    moved = ensure_pinned([("io.github.toolweather/upstream", "9", "https://new.example/mcp", "sse", 7)])
+    up = next(e for e in moved if e[0] == "io.github.toolweather/upstream")
+    assert up[1:] == ("9", "https://new.example/mcp", "sse", PIN_PRIORITY)
+    assert "https://upstream.toolweather.workers.dev/mcp" not in {e[2] for e in moved}
+
 # ---------- probing ----------
 def rpc(id_, method, params=None):
     m = {"jsonrpc": "2.0", "method": method}
@@ -454,6 +535,7 @@ async def run_cycle(dbpath, limit, concurrency, timeout, sample, host_gap, from_
             if not eps: raise
             print(f"registry unavailable ({type(e).__name__}); probing {len(eps)} known endpoints from history", file=sys.stderr)
         print(f"registry entries={len(entries)} remote endpoints={len(eps)}", file=sys.stderr)
+        eps = ensure_pinned(eps)
         eps.sort(key=lambda e: e[2])
         if sample: random.Random(42).shuffle(eps)   # sample mode keeps v1 ordering (seed 42) for comparability
         else: eps.sort(key=lambda e: -e[4])         # default: priority proxy, highest first
@@ -462,7 +544,10 @@ async def run_cycle(dbpath, limit, concurrency, timeout, sample, host_gap, from_
             known = {e[2] for e in eps}
             eps = [e for e in eps if e[2] in want] + [tuple(r) + (0,) for r in con.execute(
                 "SELECT server_name,version,url,transport FROM endpoints") if r[2] in want and r[2] not in known]
-        eps = eps[:limit]
+            eps = eps[:limit]   # replay stays the historical set; do not inject pins that cycle never saw
+        else:
+            eps = limit_keeping_pinned(eps, limit)
+        print(f"probe set={len(eps)} pinned={[e[0] for e in eps if e[0] in {n for n,_,_ in PINNED_REMOTES}]}", file=sys.stderr)
         for n, v, u, t, pr in eps:
             con.execute("INSERT INTO endpoints(server_name,version,url,transport,first_seen,last_seen,priority) VALUES(?,?,?,?,?,?,?) "
                         "ON CONFLICT(url) DO UPDATE SET server_name=excluded.server_name, version=excluded.version, "
