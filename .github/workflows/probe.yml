@@ -1,0 +1,38 @@
+name: probe
+on:
+  schedule: [{ cron: "*/15 * * * *" }]
+  workflow_dispatch: {}
+concurrency: { group: probe, cancel-in-progress: false }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install httpx
+      - name: Restore probe history
+        uses: actions/cache/restore@v4
+        with:
+          path: mcp_health.db
+          key: probe-db-${{ github.run_id }}
+          restore-keys: probe-db-
+      - name: Probe (read-only)
+        run: timeout 720 python mcphealth.py probe --limit 2000 --concurrency 64 --timeout 12 --budget 540
+      - run: python mcphealth.py prune --days 7
+      - name: Save probe history
+        uses: actions/cache/save@v4
+        with:
+          path: mcp_health.db
+          key: probe-db-${{ github.run_id }}
+      - name: Ingest to D1
+        run: python scripts/ingest_d1.py
+      - name: Build + deploy status page
+        run: |
+          python build_site.py
+          npx -y wrangler@4 pages deploy site --project-name toolweather --branch main --commit-dirty=true

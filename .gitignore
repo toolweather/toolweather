@@ -1,0 +1,11 @@
+.secrets/
+*.db
+*.db-*
+keys*
+.venv/
+logs/
+registry_cache*
+node_modules/
+__pycache__/
+.wrangler/
+site/preview*.png

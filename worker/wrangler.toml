@@ -1,0 +1,10 @@
+name = "toolweather"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+account_id = "9c9d3ecdf6a4b87be13756af2efadcce"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "toolweather"
+database_id = "f3fca32f-f22b-4227-a860-7bccf8295a76"
