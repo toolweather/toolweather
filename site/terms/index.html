@@ -1,6 +1,28 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Terms of Service · Toolweather</title><style>:root{--bg:#fbfbf9;--fg:#1b1d21;--mut:#626873;--acc:#2f6f5e;--bd:#e3e3df}@media (prefers-color-scheme:dark){:root{--bg:#121417;--fg:#e7e8ea;--mut:#9aa1ab;--acc:#6fc2a8;--bd:#2a2e34}}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}main{max-width:760px;margin:0 auto;padding:40px 20px 80px}h1{font-size:1.8rem}h2{font-size:1.1rem;margin-top:1.8em}a{color:var(--acc)}.mut{color:var(--mut)}footer{border-top:1px solid var(--bd);margin-top:40px;padding-top:12px;font-size:14px}</style></head><body><main>
-<p><a href="/">← Toolweather</a></p><h1>Terms of Service</h1><p class="mut">Last updated October 15, 2026. Operator: Toolweather, Mexico. Contact: <a href="mailto:toolweather@mail.grokbot.com">toolweather@mail.grokbot.com</a></p>
+<!doctype html><html lang="en"><head><script>(function(){var t=localStorage.getItem("tw-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t})();
+function twToggle(){var d=document.documentElement,t=d.dataset.theme==="dark"?"light":"dark";d.dataset.theme=t;localStorage.setItem("tw-theme",t);var b=document.getElementById("tg");if(b)b.textContent=t==="dark"?"Light mode":"Dark mode"}</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Terms of Service · Toolweather</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F0EBE3;--fg:#6A5B4A;--mut:#7A7064;--acc:#7A5432;--bd:#D9CDB8;--clay:#A67C52;--display:"Cormorant Garamond","EB Garamond",Georgia,serif;--sans:"IBM Plex Sans","Avenir Next",sans-serif;color-scheme:light}
+:root[data-theme=dark]{--bg:#1C1712;--fg:#E8DFD2;--mut:#B5A794;--acc:#C4A07A;--bd:#4A3E32;--clay:#C4A07A;color-scheme:dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#1C1712;--fg:#E8DFD2;--mut:#B5A794;--acc:#C4A07A;--bd:#4A3E32;--clay:#C4A07A;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16.5px/1.65 var(--sans)}
+.isobars{position:absolute;left:0;right:0;top:0;width:100%;height:180px;pointer-events:none;color:var(--fg);opacity:.1;-webkit-mask-image:linear-gradient(#000 20%,transparent);mask-image:linear-gradient(#000 20%,transparent)}
+main{position:relative;max-width:760px;margin:0 auto;padding:40px 20px 80px}
+h1{font-family:var(--display);font-weight:500;font-size:2.5rem;letter-spacing:.02em;line-height:1.15;margin:.15em 0 .45em}
+h1::before{content:"";display:block;width:36px;height:2px;background:var(--clay);margin:0 0 12px}
+h2{font-family:var(--sans);font-size:1.05rem;font-weight:500;letter-spacing:.01em;margin-top:1.8em}
+a{color:var(--acc);text-underline-offset:3px}
+.mut{color:var(--mut)}
+footer{border-top:1px solid var(--bd);margin-top:40px;padding-top:12px;font-size:14px}
+.back{display:flex;align-items:center;gap:10px}
+.back img{width:28px;height:28px;display:block}
+.tg{margin-left:auto;background:transparent;border:1px solid var(--bd);color:var(--fg);border-radius:999px;padding:5px 12px;font:500 13px var(--sans);cursor:pointer}
+:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
+</style></head><body>
+<svg class="isobars" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true"><path d="M-40 70 C 160 24, 300 140, 480 68 S 800 12, 1020 86 S 1240 150, 1320 60" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M-40 120 C 180 74, 340 180, 540 112 S 860 48, 1100 124 S 1280 170, 1340 110" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/></svg>
+<main>
+<p class="back"><img src="../mark.svg" width="28" height="28" alt=""><a href="/">← Toolweather</a><button class="tg" id="tg" type="button" onclick="twToggle()">Dark mode</button></p><h1>Terms of Service</h1><p class="mut">Last updated October 15, 2026. Operator: Toolweather, Mexico. Contact: <a href="mailto:toolweather@mail.grokbot.com">toolweather@mail.grokbot.com</a></p>
 <p>Toolweather checks public MCP servers and tells agents whether a server or tool looks safe to call right now, with alternatives. By using the website, API, MCP endpoint or change alerts you agree to these terms.</p>
 <h2>Free use and fair use</h2><p>Use is free up to the published daily limits (currently 1,000 checks a day per free key, with up to 3 watched servers for change alerts). Don't create many keys or rotate networks to get around limits, overload the service, scrape it in bulk, resell raw access, or use it for anything unlawful. We may rate-limit, throttle or block traffic that harms the service or other users.</p>
 <h2>Payments</h2><p>Normal use is free within the published limits. Calls beyond the free quota, live rechecks beyond the free allowance, batch checks over quota, and extra watches are paid per call or per 30-day watch via x402 in USDC on Base mainnet, at the prices listed at <a href="/#pricing">toolweather.pages.dev/#pricing</a> and in the 402 response before you pay. You are not charged when a call returns an error. Blockchain payments are final and non-refundable, except where the law requires otherwise. A paid watch lasts 30 days and does not renew automatically. Upstream tools offered through Toolweather follow Upstream's own prices and terms. SpendGate tools offered through Toolweather follow SpendGate's own prices and terms. A spend score is a decision check, not a payment.</p>
@@ -11,4 +33,4 @@ body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-appl
 <h2>Limitation of liability</h2><p>To the extent the law allows, we are not liable for any indirect, incidental or consequential damages, or for lost profits, data or revenue, arising from your use of the service. Our total liability for any claim is limited to the amount you paid us in the 30 days before the claim, or US$10 if you paid nothing.</p>
 <h2>Changes and termination</h2><p>We may change, suspend or stop the service, its prices or its free limits at any time. We may revoke keys or block access that breaks these terms. We'll update this page when the terms change; continued use means you accept the new version.</p>
 <h2>Law</h2><p>These terms are governed by the laws of Mexico. Questions: <a href="mailto:toolweather@mail.grokbot.com">toolweather@mail.grokbot.com</a>.</p>
-<footer class="mut"><a href="/">Toolweather</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="mailto:toolweather@mail.grokbot.com">Contact</a></footer></main></body></html>
+<footer class="mut"><a href="/">Toolweather</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="mailto:toolweather@mail.grokbot.com">Contact</a></footer></main><script>document.getElementById("tg").textContent=document.documentElement.dataset.theme==="dark"?"Light mode":"Dark mode"</script></body></html>

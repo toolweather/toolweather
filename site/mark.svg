@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="168 168 464 464">
+  <defs>
+    <clipPath id="ca"><rect x="200" y="200" width="400" height="400" rx="108"/></clipPath>
+    <filter id="blura" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4.5"/>
+    </filter>
+    <filter id="lifta" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#6A5B4A" flood-opacity="0.28"/>
+    </filter>
+    <filter id="shella" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#6A5B4A" flood-opacity="0.16"/>
+    </filter>
+    <linearGradient id="rima" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#EFE9DE"/>
+      <stop offset="100%" stop-color="#D9CDB8"/>
+    </linearGradient>
+    <linearGradient id="glassa" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#6A5B4A" stop-opacity="0.05"/>
+    </linearGradient>
+    <radialGradient id="recessa" cx="50%" cy="45%" r="70%">
+      <stop offset="55%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#6A5B4A" stop-opacity="0.22"/>
+    </radialGradient>
+  </defs>
+  <rect x="178" y="178" width="444" height="444" rx="128" fill="url(#rima)" filter="url(#shella)"/>
+  <rect x="178" y="178" width="444" height="444" rx="128" fill="none" stroke="#6A5B4A" stroke-width="14"/>
+  <rect x="200" y="200" width="400" height="400" rx="108" fill="#BEB09A"/>
+  <g clip-path="url(#ca)">
+    <g filter="url(#blura)" opacity="0.95">
+      <rect x="200" y="200" width="400" height="400" fill="#C9BBA6"/>
+      <path d="M150 290 C260 250 340 330 430 285 C520 240 590 310 670 275" fill="none" stroke="#E2D9CB" stroke-width="22" stroke-linecap="round"/>
+      <path d="M150 355 C250 315 345 395 435 340 C525 285 595 365 670 330" fill="none" stroke="#EFE9DE" stroke-width="18" stroke-linecap="round"/>
+      <path d="M150 420 C245 380 340 460 430 405 C520 350 590 430 670 395" fill="none" stroke="#7A7064" stroke-width="12" stroke-linecap="round" opacity="0.55"/>
+      <path d="M150 485 C255 445 350 525 440 470 C530 415 600 495 670 460" fill="none" stroke="#E2D9CB" stroke-width="20" stroke-linecap="round"/>
+      <circle cx="360" cy="360" r="70" fill="#EFE9DE" opacity="0.25"/>
+    </g>
+    <rect x="200" y="200" width="400" height="400" fill="url(#recessa)"/>
+    <rect x="200" y="200" width="400" height="400" fill="url(#glassa)"/>
+  </g>
+  <rect x="200" y="200" width="400" height="400" rx="108" fill="none" stroke="#6A5B4A" stroke-width="6" opacity="0.35"/>
+  <g filter="url(#lifta)">
+    <rect x="318" y="312" width="24" height="62" rx="12" fill="#6A5B4A"/>
+    <rect x="458" y="312" width="24" height="62" rx="12" fill="#6A5B4A"/>
+  </g>
+  <path d="M340 448 Q400 498 460 448" fill="none" stroke="#6A5B4A" stroke-width="14" stroke-linecap="round" filter="url(#lifta)"/>
+  <circle cx="545" cy="535" r="22" fill="#A67C52" filter="url(#lifta)"/>
+</svg>
