@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
   "name": "io.github.toolweather/toolweather",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Toolweather",
-  "description": "Live health checks for MCP servers: is a server/tool safe to call now, alternatives, and webhook change alerts.",
+  "description": "Is this MCP server healthy and safe to call now? Live checks of ~2,000 servers + alternatives.",
   "websiteUrl": "https://toolweather.pages.dev",
   "repository": {
     "url": "https://github.com/toolweather/toolweather",
@@ -37,12 +37,17 @@
       "get_key": "POST https://toolweather.toolweather.workers.dev/v1/keys"
     },
     "io.github.toolweather/tools": [
+      "check_mcp_server_health",
+      "find_alternative_mcp_servers",
       "get_api_key",
-      "is_safe_to_call",
-      "suggest_alternatives",
       "watch_server",
       "list_watches",
       "unwatch_server"
-    ]
+    ],
+    "io.github.toolweather/tool_aliases": {
+      "is_safe_to_call": "check_mcp_server_health",
+      "suggest_alternatives": "find_alternative_mcp_servers"
+    },
+    "io.github.toolweather/when_to_use": "Before adding or calling a third-party MCP server, or after its calls fail: check_mcp_server_health. If unsafe or you need a capability: find_alternative_mcp_servers. Every result starts with a one-line summary, verdict, recommended_action, checked_at and freshness."
   }
 }

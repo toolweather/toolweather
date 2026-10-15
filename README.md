@@ -102,7 +102,7 @@ Get a key with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
 ### MCP
 
 Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server with header `X-API-Key: <key>`.
-Tools: `get_api_key()` (no key needed), `is_safe_to_call(server, tool?)`, `suggest_alternatives(query, limit?)`, and change alerts:
+Tools: `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`), `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), and change alerts:
 `watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`. The endpoint answers both
 2026-07-28 `server/discover` and legacy `initialize`.
 

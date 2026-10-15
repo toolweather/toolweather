@@ -179,19 +179,35 @@ async function alternatives(env, q, limit = 5) {
 }
 
 // ---- MCP (streamable HTTP, stateless; answers 2026-07-28 server/discover and legacy initialize) ----
+const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+const SRV = { type: "string", description: "MCP server registry name (e.g. io.github.owner/name, com.example/server) or its remote URL (https://.../mcp). Partial names are matched.", examples: ["com.ufcalendar/fight-api", "https://mcp.example.com/mcp"] };
 const TOOLS = [
-  { name: "is_safe_to_call", description: "Check whether an MCP server (registry name or URL), and optionally one of its tools, is safe to call right now. Returns verdict safe/caution/unsafe, live status, latency, last tool change (breaking?), spec readiness, auth info, checked_at and age_seconds. Results older than 5 minutes are re-verified with a live handshake.",
-    inputSchema: { type: "object", properties: { server: { type: "string" }, tool: { type: "string" }, fresh: { type: "boolean", description: "force a live handshake now (otherwise automatic when the stored check is >5 min old)" }, bearer_token: { type: "string", description: "optional: your own token for this server, for a one-off authenticated initialize + tools/list check. Used once, never stored or logged." } }, required: ["server"] } },
-  { name: "suggest_alternatives", description: "Find working MCP servers with similar tools. query = a server name/URL, or capability text like 'send email'.",
-    inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
-  { name: "get_api_key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key or email needed. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
-    inputSchema: { type: "object", properties: {} } },
-  { name: "watch_server", description: "Get an HTTPS webhook when a server's verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free tier: 3 watches per key.",
-    inputSchema: { type: "object", properties: { server: { type: "string", description: "registry name or URL" }, webhook_url: { type: "string", description: "public https URL" } }, required: ["server", "webhook_url"] } },
-  { name: "list_watches", description: "List this API key's watches and their delivery health.", inputSchema: { type: "object", properties: {} } },
-  { name: "unwatch_server", description: "Delete a watch by id.", inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
+  { name: "check_mcp_server_health", title: "Is this MCP server healthy / safe to call right now?",
+    description: "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Alias: is_safe_to_call.",
+    inputSchema: { type: "object", properties: { server: SRV, tool: { type: "string", description: "Optional tool name to confirm it still exists on the server, e.g. search" }, fresh: { type: "boolean", description: "Force a live handshake now (otherwise automatic when the stored check is >5 min old)" }, bearer_token: { type: "string", description: "Optional: your own token for this server, for a one-off authenticated initialize + tools/list check. Used once, never stored or logged." } }, required: ["server"] }, annotations: { title: "Is this MCP server healthy?", ...RO } },
+  { name: "find_alternative_mcp_servers", title: "Find a working MCP server that does X",
+    description: "Find healthy, currently-working MCP servers by capability (e.g. 'send email', 'web search', 'postgres') or replacements for a broken server (pass its name/URL). Use when check_mcp_server_health says unsafe, or when you need a tool you don't have. Unhealthy servers are excluded. Returns summary first, then ranked servers with verdict, latency and matching tools. Example: {\"query\":\"send email\",\"limit\":5}. Alias: suggest_alternatives.",
+    inputSchema: { type: "object", properties: { query: { type: "string", description: "Capability text like 'send email', or a server name/URL to replace", examples: ["send email", "web search"] }, limit: { type: "integer", description: "1-20, default 5" } }, required: ["query"] }, annotations: { title: "Find alternative MCP servers", ...RO } },
+  { name: "get_api_key", title: "Get a free Toolweather API key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key, email or signup needed; call this first if you have no key. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
+    inputSchema: { type: "object", properties: {} }, annotations: { title: "Get free API key", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+  { name: "watch_server", title: "Alert me when an MCP server breaks", description: "Get an HTTPS webhook when an MCP server goes down, its verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Use instead of polling. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free tier: 3 watches per key. Example: {\"server\":\"com.ufcalendar/fight-api\",\"webhook_url\":\"https://example.com/hook\"}.",
+    inputSchema: { type: "object", properties: { server: SRV, webhook_url: { type: "string", description: "Public https URL that receives POSTed JSON alerts" } }, required: ["server", "webhook_url"] }, annotations: { title: "Watch a server", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
+  { name: "list_watches", title: "List my server watches", description: "List this API key's server watches and their webhook delivery health.", inputSchema: { type: "object", properties: {} }, annotations: { title: "List watches", ...RO, openWorldHint: false } },
+  { name: "unwatch_server", title: "Stop watching a server", description: "Delete one of your watches by id (from list_watches).", inputSchema: { type: "object", properties: { id: { type: "string", description: "Watch id, e.g. w_abc123" } }, required: ["id"] }, annotations: { title: "Delete watch", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } },
 ];
-const INFO = { name: "toolweather", version: "0.1.0" };
+const ALIAS = { is_safe_to_call: "check_mcp_server_health", suggest_alternatives: "find_alternative_mcp_servers" };
+function decorate(r) {
+  if (!r || r.error) return r;
+  if (r.alternatives) { const a = r.alternatives; return { summary: a.length ? `${a.length} working server(s) for "${r.query}". Best: ${a[0].server} (${a[0].verdict}${a[0].latency_ms ? ", " + Math.round(a[0].latency_ms) + " ms" : ""}).` : `No healthy servers found for "${r.query}". Try broader capability words.`, checked_at: new Date().toISOString(), ...r }; }
+  const n = r.server + (r.tool ? " tool '" + r.tool + "'" : ""), why = (r.reasons || []).join("; ");
+  const act = { safe: "call_it", caution: "call_with_care", unsafe: "use_alternative", unknown: "verify_yourself" }[r.verdict] || "verify_yourself";
+  const txt = { safe: "Safe to call.", caution: "Usable, but call with retries/timeouts" + (r.status === "auth_required" ? " and valid credentials" : "") + ".", unsafe: "Do not rely on it now; use find_alternative_mcp_servers.", unknown: "Not in the Toolweather index; check it yourself." }[r.verdict] || "";
+  const age = r.age_seconds ?? (r.last_checked ? Math.round((Date.now() - Date.parse(r.last_checked)) / 1000) : null);
+  return { summary: `${n}: ${(r.verdict || "unknown").toUpperCase()}${why ? " (" + why + ")" : ""}. ${txt}`, verdict: r.verdict, recommended_action: act,
+    checked_at: r.checked_at || r.last_checked || null, freshness: { age_seconds: age, fresh: age != null && age <= FRESH_S, source: r.source || "scheduled_probe" }, ...r };
+}
+const INFO = { name: "toolweather", title: "Toolweather", version: "0.2.0" };
+const INSTR = "Use check_mcp_server_health before adding/calling a third-party MCP server or after its calls fail; if unsafe, use find_alternative_mcp_servers. No key yet? call get_api_key (free, instant). Every result starts with a one-line summary.";
 async function mcp(req, env, key, ctx) {
   let msg; try { msg = await req.json(); } catch { return J({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   if (Array.isArray(msg)) return J({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batch not supported" } }, 400);
@@ -204,11 +220,12 @@ async function mcp(req, env, key, ctx) {
     case "server/discover": return ok({ resultType: "complete", supportedVersions: [MODERN, "2025-11-25", "2025-06-18", "2025-03-26"], capabilities: { tools: {} }, _meta: { "io.modelcontextprotocol/serverInfo": INFO }, ttlMs: 3600000, cacheScope: "public" });
     case "initialize": {
       const v = ["2025-11-25", "2025-06-18", "2025-03-26"].includes(params.protocolVersion) ? params.protocolVersion : "2025-06-18";
-      return ok({ protocolVersion: v, capabilities: { tools: {} }, serverInfo: INFO });
+      return ok({ protocolVersion: v, capabilities: { tools: {} }, serverInfo: INFO, instructions: INSTR });
     }
     case "ping": return ok({});
     case "tools/list": return ok({ tools: TOOLS });
     case "tools/call": {
+      if (ALIAS[params.name]) params.name = ALIAS[params.name];
       if (params.name === "get_api_key") {
         const r = await newKey(env, req, "mcp");
         track(env, ctx, "get_api_key", "mcp", r.code === 201 ? "ok" : "rate_limited");
@@ -216,12 +233,12 @@ async function mcp(req, env, key, ctx) {
       }
       const g = await gate(env, key || params.arguments?.api_key);
       track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
-      trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["is_safe_to_call", "watch_server"].includes(params.name) ? params.arguments?.server : null);
+      trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["check_mcp_server_health", "watch_server"].includes(params.name) ? params.arguments?.server : null);
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
       let r;
-      if (params.name === "is_safe_to_call") r = await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: g.h, bearer: a.bearer_token });
-      else if (params.name === "suggest_alternatives") r = await alternatives(env, a.query, a.limit);
+      if (params.name === "check_mcp_server_health") r = decorate(await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: g.h, bearer: a.bearer_token }));
+      else if (params.name === "find_alternative_mcp_servers") r = decorate(await alternatives(env, a.query, a.limit));
       else if (params.name === "watch_server") r = (await createWatch(env, g.h, a.server, a.webhook_url)).body;
       else if (params.name === "list_watches") r = (await listWatches(env, g.h)).body;
       else if (params.name === "unwatch_server") r = (await deleteWatch(env, g.h, a.id)).body;
@@ -302,8 +319,8 @@ export default {
       trackKey(env, ctx, g, ep, "rest", ep === "is_safe_to_call" ? url.searchParams.get("server") : null);
       if (!g.ok) return J({ error: g.msg }, g.code);
       const h = { "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining, 0)) };
-      const r = p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: ["1", "true"].includes(url.searchParams.get("fresh")), keyHash: g.h, bearer: req.headers.get("x-upstream-authorization") })
-        : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit"));
+      const r = decorate(p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: ["1", "true"].includes(url.searchParams.get("fresh")), keyHash: g.h, bearer: req.headers.get("x-upstream-authorization") })
+        : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit")));
       if (req.headers.get("x-upstream-authorization")) h["cache-control"] = "no-store";
       return J(r, r.error ? 400 : 200, h);
     }
