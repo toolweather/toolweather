@@ -1,0 +1,6 @@
+# Public status pages. Per-server HTML lives under /servers/.
+User-agent: *
+Allow: /servers/
+Allow: /
+
+Sitemap: https://toolweather.pages.dev/sitemap.xml

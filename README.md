@@ -10,6 +10,7 @@
 | **PayCheck** | `trusted` / `unknown` / `suspicious` / `block` before an agent pays a merchant, host, or wallet. | `check_merchant` · `paycheck_get_quota` · `paycheck_get_api_key` |
 
 - Status page: https://toolweather.pages.dev
+- MCP readiness leaderboard: https://toolweather.pages.dev/servers/
 - API / MCP: https://toolweather.toolweather.workers.dev/mcp
 - Upstream REST + x402 (still independent): https://upstream.toolweather.workers.dev · https://upstream-api.pages.dev
 - SpendGate REST + x402 (still independent): https://spendgate.toolweather.workers.dev
@@ -253,11 +254,15 @@ Reply 2xx within 10 s. Failed deliveries retry after 1, 5, 30, 120 and 360 minut
 deliveries in a row the watch is disabled (see `GET /v1/watches`). Changes are detected every 5 minutes
 by a Cloudflare cron trigger, against probes that run every 15 minutes.
 
-### Badge
+### Embed a free status badge
+
+Free. No signup. The image updates from our probes, and the link opens that server's status page.
 
 ```markdown
-[![Toolweather](https://toolweather.toolweather.workers.dev/badge/<registry-name>.svg)](https://toolweather.pages.dev)
+[![Toolweather](https://toolweather.toolweather.workers.dev/badge/<registry-name>.svg)](https://toolweather.pages.dev/servers/<slug>/)
 ```
+
+`<slug>` is the registry name with `/` written as `--` (`com.ufcalendar/fight-api` → `com.ufcalendar--fight-api`). Full snippet and rules: [badge_readme.md](badge_readme.md).
 
 ## Probing policy (read-only)
 
@@ -296,7 +301,8 @@ PayCheck's code is not in this repo. It receives the same `x-tw-bundle-secret` a
 - `mcphealth.py`: registry fetch, polite async prober, SQLite storage, tool-list diffing
   (breaking = tool removed, required param added, param removed or type changed).
 - `.github/workflows/probe.yml`: runs every 15 min on GitHub Actions, pushes precomputed verdicts to Cloudflare D1
-  (`scripts/ingest_d1.py`) and redeploys the status page (`build_site.py`) to Cloudflare Pages.
+  (`scripts/ingest_d1.py`) and redeploys the status page, readiness leaderboard, and per-server pages
+  (`build_site.py`, `build_servers.py`) to Cloudflare Pages.
 - `worker/`: Cloudflare Worker serving the API, MCP endpoint and badges from D1.
 - `tw_core.py`, `api.py`, `mcp_server.py`: local (self-hosted) versions of the same API.
 
