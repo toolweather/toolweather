@@ -228,7 +228,10 @@ def auth_state(info):
     for k, lbl in (("token_endpoint", "token endpoint"), ("authorization_endpoint", "authorization endpoint")):
         if not a.get(k): return "auth_broken", f"metadata has no {lbl}"
         c = a.get(k + "_check") or {}
-        if not c.get("ok"): return "auth_broken", f"{lbl} unreachable ({c.get('error') or 'HTTP %s' % c.get('http_status')})"
+        if not c.get("ok"):
+            if c.get("http_status"):   # reachable over TLS but 5xx to our parameter-less request: real requests may still work
+                return "auth_suspect", f"{lbl} answered HTTP {c['http_status']} to a parameter-less check; login may still work"
+            return "auth_broken", f"{lbl} unreachable ({c.get('error')})"
     reg = "open (dynamic client registration)" if a.get("registration_endpoint") and (a.get("registration_endpoint_check") or {}).get("ok") \
         else ("client ID metadata documents" if a.get("cimd") else "pre-registered clients only")
     return "auth_ok", f"OAuth login flow reachable (metadata, authorization + token endpoints OK); registration: {reg}"

@@ -38,7 +38,7 @@ def endpoint_report(c, r, tool=None):
         oa = json.loads(r["oauth"]) if r["oauth"] else {}
         state = oa.get("state")
         if state == "auth_broken": verdict = "unsafe"; reasons.append(f"auth_broken: {oa.get('state_detail')}; new logins will fail")
-        elif state == "auth_ok": verdict = "caution"; reasons.append(f"auth_ok: {oa.get('state_detail')}; tools unverified without credentials")
+        elif state in ("auth_ok", "auth_suspect"): verdict = "caution"; reasons.append(f"{state}: {oa.get('state_detail')}; tools unverified without credentials")
         else: verdict = "caution"; reasons.append(f"requires authentication; {oa.get('state_detail') or 'health of tools unverified'}")
     else:
         verdict = "safe"
