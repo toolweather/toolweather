@@ -80,13 +80,23 @@ curl -H "X-API-Key: $TW_KEY" "https://toolweather.toolweather.workers.dev/v1/sug
 (`ok` / `auth_required` / `failed`), latency, protocol version, spec readiness, auth/OAuth discovery info,
 the last tool change (and whether it was breaking), `last_checked`, plus `checked_at` and `age_seconds`.
 
+**Auth-gated servers:** without credentials, Toolweather follows the OAuth discovery chain (RFC 9728 protected-resource metadata, RFC 8414 / OIDC auth-server metadata) and checks that the authorization, token and registration endpoints answer over TLS. `auth.state` is `auth_ok` (login flow reachable; `dynamic_client_registration` tells you if registration is open), `auth_broken` (OAuth advertised but a step fails, verdict `unsafe`: new logins will fail), or `auth_opaque` (needs credentials, no OAuth discovery, e.g. API keys). No client is ever registered and no credentials are sent. To check a server with your own token, add `X-Upstream-Authorization: Bearer <token>` (REST) or `bearer_token` (MCP tool argument): Toolweather runs one authenticated initialize + tools/list and returns `authenticated_check`. The token is used for that request only, never stored or logged, and the result is not cached.
+
 **Track record:** `GET /v1/accuracy` (no key) and the status page show, per day, how often a verdict matched the very next scheduled check of the same server. It measures how stable verdicts are between checks (~15 min), not whether tool calls succeed.
 
 **Fresh results:** if the stored check is older than 5 minutes, or you pass `fresh=true`, Toolweather runs a quick read-only `initialize` handshake against the server right then (4 s timeout) and returns that result (`source: live_probe`, `live: {...}`). Live results are cached briefly (a server is re-probed at most once a minute) and each key gets 200 live checks a day; after that you get the newest cached result.
 
 Free tier: 1,000 calls per key per day.
 
-> **Python users:** Cloudflare's `*.workers.dev` edge rejects Python's default `Python-urllib/x.y` User-Agent (error 1010). Send any descriptive User-Agent, e.g. `urllib.request.Request(url, headers={"User-Agent": "my-agent/1.0", "X-API-Key": key})`. `requests`, `httpx`, curl and Node work as-is.
+> **Getting `HTTP 403` with body `error code: 1010`?** That is Cloudflare's edge rejecting Python's default `Python-urllib/x.y` User-Agent before the request reaches Toolweather. It applies to all free `*.workers.dev` / `*.pages.dev` addresses and can't be disabled there. It is not a key problem. Send any other User-Agent:
+>
+> ```python
+> import json, urllib.request
+> req = urllib.request.Request("https://toolweather.toolweather.workers.dev/v1/keys", method="POST", headers={"User-Agent": "my-agent/1.0"})
+> key = json.load(urllib.request.urlopen(req))["api_key"]
+> ```
+>
+> `requests`, `httpx`, `aiohttp`, curl, Node and browsers work as-is.
 Get a key with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys`.
 
 ### MCP

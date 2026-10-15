@@ -4,8 +4,17 @@
 
 Free tier: 1,000 calls per API key per day. Get a key instantly, no email or signup: `POST https://toolweather.toolweather.workers.dev/v1/keys` (returns `api_key`, shown once), or call the MCP tool `get_api_key` without a key.
 
+IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-urllib/x.y` User-Agent with `HTTP 403` and body `error code: 1010`, before the request reaches Toolweather. This affects every free `*.workers.dev` and `*.pages.dev` address and cannot be turned off there. Fix: send any other User-Agent:
+
+    import json, urllib.request
+    req = urllib.request.Request("https://toolweather.toolweather.workers.dev/v1/keys", method="POST", headers={"User-Agent": "my-agent/1.0"})
+    key = json.load(urllib.request.urlopen(req))["api_key"]
+
+`requests`, `httpx`, `aiohttp`, curl, Node and browsers are not affected. If you see `error code: 1010`, it is this, not an invalid key.
+
 ## Use it
 
+- Auth-gated servers: verdicts include `auth.state` = `auth_ok` (OAuth login flow reachable: RFC 9728 + RFC 8414 metadata resolve, authorization and token endpoints answer over TLS; `dynamic_client_registration` says if registration is open), `auth_broken` (OAuth advertised but a step fails; verdict unsafe because new logins will fail) or `auth_opaque` (credentials needed, no OAuth discovery). Pass your own token as header `X-Upstream-Authorization: Bearer <token>` (REST) or `bearer_token` (MCP) for a one-off authenticated initialize + tools/list check; the token is never stored or logged.
 - [MCP endpoint (streamable HTTP)](https://toolweather.toolweather.workers.dev/mcp): tools `get_api_key()` (no key needed), `is_safe_to_call(server, tool?)`, `suggest_alternatives(query, limit?)`, `watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`. Send header `X-API-Key: <key>`. Answers 2026-07-28 `server/discover` and legacy `initialize`.
 - [REST: is_safe_to_call](https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server=io.github.owner/name): returns `verdict` (safe / caution / unsafe / unknown), reasons, status, latency, auth info, last tool change, `checked_at`, `age_seconds`. Add `fresh=true` to force a live handshake; checks older than 5 minutes are re-verified live automatically (200 live checks/key/day).
 - [Track record](https://toolweather.toolweather.workers.dev/v1/accuracy): daily share of verdicts that matched the next scheduled check of the same server (stability between checks, not tool-call success). No key needed.
@@ -14,7 +23,6 @@ Free tier: 1,000 calls per API key per day. Get a key instantly, no email or sig
 - [OpenAPI 3.1 spec](https://toolweather.toolweather.workers.dev/openapi.json)
 - [MCP server card](https://toolweather.toolweather.workers.dev/.well-known/mcp)
 
-Note: requests with Python's default `Python-urllib` User-Agent are rejected by Cloudflare's edge (error 1010). Set any descriptive User-Agent header.
 
 ## Docs
 
