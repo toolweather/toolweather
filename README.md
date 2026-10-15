@@ -1,13 +1,13 @@
 # Toolweather
 
-**Is this MCP tool safe to call right now?** Toolweather watches the remote MCP servers listed in the
-[official MCP registry](https://registry.modelcontextprotocol.io) and lets agents ask, before they call a tool,
-whether the server is up, how fast it is, whether its tools just changed in a breaking way, whether it is ready
-for the 2026-07-28 spec, and whether it needs auth.
+**Toolweather suite** — one MCP for agents that need:
+
+1. **MCP health** — is this MCP server/tool safe to call right now? (~2,000 servers from the [official MCP registry](https://registry.modelcontextprotocol.io), probed every 15 minutes: uptime, latency, breaking tool changes, 2026-07-28 spec readiness, auth).
+2. **Upstream** — is this AI/dev API down? is this model deprecated, and what replaces it? (~40 providers).
 
 - Status page: https://toolweather.pages.dev
-- API: https://toolweather.toolweather.workers.dev
-- MCP endpoint (streamable HTTP): https://toolweather.toolweather.workers.dev/mcp
+- API / MCP: https://toolweather.toolweather.workers.dev/mcp
+- Upstream REST + x402 (still independent): https://upstream.toolweather.workers.dev · https://upstream-api.pages.dev
 - Contact: toolweather@mail.grokbot.com
 
 ## Install
@@ -102,9 +102,17 @@ Get a key with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
 ### MCP
 
 Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server with header `X-API-Key: <key>`.
-Tools: `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`), `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), and change alerts:
-`watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`. The endpoint answers both
-2026-07-28 `server/discover` and legacy `initialize`.
+
+**MCP health:** `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`),
+`find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), and change alerts
+`watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`.
+
+**Upstream (proxied on the same MCP):** `check_api_status(provider)` (alias `get_status`),
+`check_model_deprecation(model)` (alias `get_model`), `list_recent_api_changes` (alias `get_changes`),
+`list_providers()`, `get_digest(date?)`. Over Upstream's free quota these return an x402 payment requirement
+(USDC on Base); Upstream's own REST `/x402/*` endpoints stay live for clients that pay directly.
+
+The endpoint answers both 2026-07-28 `server/discover` and legacy `initialize`.
 
 ### Change alerts (webhooks)
 
@@ -153,6 +161,12 @@ If you run an MCP server, here is exactly what we do:
   per server every 15 minutes.
 - User-Agent: `mcp-health-probe/0.1 (read-only; initialize+tools/list only)`.
 - To opt out or report a problem, email toolweather@mail.grokbot.com.
+
+## Toolweather suite architecture
+
+The public MCP at `toolweather…/mcp` lists both MCP-health and Upstream tools. Upstream tool calls are
+proxied to the Upstream Worker (same Cloudflare account; service binding with HTTP fallback). Upstream's
+own Worker, REST API, digests and x402 payment endpoints remain unchanged for existing clients.
 
 ## How it works
 

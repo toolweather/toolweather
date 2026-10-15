@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
   "name": "io.github.toolweather/toolweather",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "title": "Toolweather",
-  "description": "Is this MCP server healthy and safe to call now? Live checks of ~2,000 servers + alternatives.",
+  "description": "Toolweather suite: MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations. One MCP endpoint.",
   "websiteUrl": "https://toolweather.pages.dev",
   "repository": {
     "url": "https://github.com/toolweather/toolweather",
@@ -34,20 +34,34 @@
       "openapi": "https://toolweather.toolweather.workers.dev/openapi.json",
       "llms_txt": "https://toolweather.pages.dev/llms.txt",
       "status_page": "https://toolweather.pages.dev",
-      "get_key": "POST https://toolweather.toolweather.workers.dev/v1/keys"
+      "get_key": "POST https://toolweather.toolweather.workers.dev/v1/keys",
+      "upstream_api": "https://upstream.toolweather.workers.dev",
+      "upstream_site": "https://upstream-api.pages.dev"
     },
+    "io.github.toolweather/suite": [
+      "mcp_health",
+      "upstream_api_status"
+    ],
     "io.github.toolweather/tools": [
       "check_mcp_server_health",
       "find_alternative_mcp_servers",
       "get_api_key",
       "watch_server",
       "list_watches",
-      "unwatch_server"
+      "unwatch_server",
+      "check_api_status",
+      "check_model_deprecation",
+      "list_recent_api_changes",
+      "list_providers",
+      "get_digest"
     ],
     "io.github.toolweather/tool_aliases": {
       "is_safe_to_call": "check_mcp_server_health",
-      "suggest_alternatives": "find_alternative_mcp_servers"
+      "suggest_alternatives": "find_alternative_mcp_servers",
+      "get_status": "check_api_status",
+      "get_model": "check_model_deprecation",
+      "get_changes": "list_recent_api_changes"
     },
-    "io.github.toolweather/when_to_use": "Before adding or calling a third-party MCP server, or after its calls fail: check_mcp_server_health. If unsafe or you need a capability: find_alternative_mcp_servers. Every result starts with a one-line summary, verdict, recommended_action, checked_at and freshness."
+    "io.github.toolweather/when_to_use": "Before adding/calling a third-party MCP server: check_mcp_server_health. Before calling an AI/dev API or after 5xx: check_api_status. Before hard-coding a model id: check_model_deprecation. Every result starts with a one-line summary, verdict, recommended_action, checked_at and freshness."
   }
 }

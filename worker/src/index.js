@@ -181,6 +181,20 @@ async function alternatives(env, q, limit = 5) {
 // ---- MCP (streamable HTTP, stateless; answers 2026-07-28 server/discover and legacy initialize) ----
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 const SRV = { type: "string", description: "MCP server registry name (e.g. io.github.owner/name, com.example/server) or its remote URL (https://.../mcp). Partial names are matched.", examples: ["com.ufcalendar/fight-api", "https://mcp.example.com/mcp"] };
+const UP_PRICES = { status: "$0.003", changes: "$0.01", model: "$0.003" };
+const UP_TOOLS = [
+  { name: "check_api_status", title: "Is this API / provider down right now?",
+    description: `Check if an AI or developer API provider (OpenAI, Anthropic, Gemini, Mistral, Groq, GitHub, Stripe, Cloudflare, Vercel, Supabase, Twilio... ~40 total) is up, degraded or down right now. Use BEFORE calling a provider's API, or right after you get 5xx/429/timeout errors, to decide whether to retry, wait or switch to a fallback. Returns a one-line summary first, then verdict, recommended_action, open incidents, affected components, checked_at and freshness (checked every ~4 min). Example: {"provider":"openai"}. Free within the daily quota, then ${UP_PRICES.status} via x402 (USDC on Base). Alias: get_status. Part of the Toolweather suite (Upstream).`,
+    inputSchema: { type: "object", properties: { provider: { type: "string", description: "Provider id (lowercase). Examples: openai, anthropic, google-ai, mistral, groq, github, stripe, cloudflare. Full list: list_providers.", examples: ["openai", "anthropic", "github"] } }, required: ["provider"] }, annotations: { title: "Is this API down?", ...RO } },
+  { name: "check_model_deprecation", title: "Is this model deprecated, and what replaces it?",
+    description: `Check if an LLM model id is active, deprecated or retired, its shutdown date, and the recommended replacement, from the provider's own deprecation page (OpenAI, Anthropic, Google, etc.). Use before hard-coding or calling a model, or when a model call fails with "model not found / deprecated". Returns summary first, then verdict, recommended_action (keep_using | plan_migration | switch_now | verify_with_provider), replacement, shutdown_date, evidence rows and freshness. Example: {"model":"gpt-4-0613"}. Free within the daily quota, then ${UP_PRICES.model} via x402. Alias: get_model (param "id"). Part of the Toolweather suite (Upstream).`,
+    inputSchema: { type: "object", properties: { model: { type: "string", description: "Model id as used in the API call. Examples: gpt-4o, claude-3-opus-20240229, gemini-1.5-pro.", examples: ["gpt-4-0613", "claude-3-opus-20240229"] }, id: { type: "string", description: "Deprecated alias of model." } } }, annotations: { title: "Is this model deprecated?", ...RO } },
+  { name: "list_recent_api_changes", title: "What changed recently in AI/dev APIs?",
+    description: `List recent breaking or notable changes across AI and developer APIs: outages and recoveries, deprecation-page edits, model retirements and pricing-page edits. Use to answer "did anything change that could break my integration?" or to explain sudden errors. Returns summary first, then the change list with timestamps and source links. Example: {"provider":"anthropic","kind":"model_retirement"}. Free within the daily quota, then ${UP_PRICES.changes} via x402. Alias: get_changes. Part of the Toolweather suite (Upstream).`,
+    inputSchema: { type: "object", properties: { since: { type: "string", description: "ISO 8601 timestamp; default 7 days ago. Example: 2026-10-01T00:00:00Z" }, provider: { type: "string", description: "Optional provider id, e.g. openai" }, kind: { type: "string", enum: ["status", "deprecations", "model_retirement", "pricing"], description: "Optional change type filter" }, limit: { type: "number", description: "Max items, default 100, max 500" } } }, annotations: { title: "Recent API changes", ...RO } },
+  { name: "list_providers", title: "List tracked API providers", description: "List the ~40 AI and developer API providers Upstream tracks with their current state (operational/degraded/outage) and checked_at. Use to find the right provider id for check_api_status, or for a quick all-providers health overview. Free. Part of the Toolweather suite (Upstream).", inputSchema: { type: "object", properties: {} }, annotations: { title: "List providers", ...RO } },
+  { name: "get_digest", title: "Daily AI/dev API breaking-changes digest", description: "Daily digest (free) of AI/dev API incidents, model deprecations/retirements, pricing-page changes and breaking MCP server changes. Use for a once-a-day catch-up instead of polling. Example: {} for the latest, or {\"date\":\"2026-10-14\"}. Part of the Toolweather suite (Upstream).", inputSchema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD; omit for the latest issue" } } }, annotations: { title: "Daily digest", ...RO } },
+];
 const TOOLS = [
   { name: "check_mcp_server_health", title: "Is this MCP server healthy / safe to call right now?",
     description: "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Alias: is_safe_to_call.",
@@ -194,8 +208,29 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { server: SRV, webhook_url: { type: "string", description: "Public https URL that receives POSTed JSON alerts" } }, required: ["server", "webhook_url"] }, annotations: { title: "Watch a server", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
   { name: "list_watches", title: "List my server watches", description: "List this API key's server watches and their webhook delivery health.", inputSchema: { type: "object", properties: {} }, annotations: { title: "List watches", ...RO, openWorldHint: false } },
   { name: "unwatch_server", title: "Stop watching a server", description: "Delete one of your watches by id (from list_watches).", inputSchema: { type: "object", properties: { id: { type: "string", description: "Watch id, e.g. w_abc123" } }, required: ["id"] }, annotations: { title: "Delete watch", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } },
+  ...UP_TOOLS,
 ];
-const ALIAS = { is_safe_to_call: "check_mcp_server_health", suggest_alternatives: "find_alternative_mcp_servers" };
+const ALIAS = { is_safe_to_call: "check_mcp_server_health", suggest_alternatives: "find_alternative_mcp_servers", get_status: "check_api_status", get_model: "check_model_deprecation", get_changes: "list_recent_api_changes" };
+const UP_NAMES = new Set(UP_TOOLS.map((t) => t.name));
+const UP_URL = "https://upstream.toolweather.workers.dev";
+async function proxyUpstream(env, name, args, meta, clientId) {
+  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args || {}, ...(meta ? { _meta: meta } : {}) } });
+  const headers = { "content-type": "application/json", "user-agent": "toolweather-suite/0.3", accept: "application/json" };
+  if (env.BUNDLE_PROXY_SECRET && clientId) {
+    headers["x-tw-bundle-secret"] = env.BUNDLE_PROXY_SECRET;
+    headers["x-tw-bundle-client"] = clientId;
+  }
+  const init = { method: "POST", headers, body };
+  let r;
+  if (env.UPSTREAM && typeof env.UPSTREAM.fetch === "function") {
+    try { r = await env.UPSTREAM.fetch(new Request(UP_URL + "/mcp", init)); }
+    catch { r = null; }
+  }
+  if (!r) r = await fetch(UP_URL + "/mcp", init);
+  let j; try { j = await r.json(); } catch { return { isError: true, content: [{ type: "text", text: "Upstream proxy failed (bad JSON)" }], structuredContent: { error: "upstream_proxy_failed", status: r.status } }; }
+  if (j.error) return { isError: true, content: [{ type: "text", text: j.error.message || "upstream error" }], structuredContent: j.error };
+  return j.result || { isError: true, content: [{ type: "text", text: "empty upstream result" }] };
+}
 function decorate(r) {
   if (!r || r.error) return r;
   if (r.alternatives) { const a = r.alternatives; return { summary: a.length ? `${a.length} working server(s) for "${r.query}". Best: ${a[0].server} (${a[0].verdict}${a[0].latency_ms ? ", " + Math.round(a[0].latency_ms) + " ms" : ""}).` : `No healthy servers found for "${r.query}". Try broader capability words.`, checked_at: new Date().toISOString(), ...r }; }
@@ -206,8 +241,8 @@ function decorate(r) {
   return { summary: `${n}: ${(r.verdict || "unknown").toUpperCase()}${why ? " (" + why + ")" : ""}. ${txt}`, verdict: r.verdict, recommended_action: act,
     checked_at: r.checked_at || r.last_checked || null, freshness: { age_seconds: age, fresh: age != null && age <= FRESH_S, source: r.source || "scheduled_probe" }, ...r };
 }
-const INFO = { name: "toolweather", title: "Toolweather", version: "0.2.0" };
-const INSTR = "Use check_mcp_server_health before adding/calling a third-party MCP server or after its calls fail; if unsafe, use find_alternative_mcp_servers. No key yet? call get_api_key (free, instant). Every result starts with a one-line summary.";
+const INFO = { name: "toolweather", title: "Toolweather", version: "0.3.0" };
+const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. No key yet? call get_api_key (free, instant). Every result starts with a one-line summary.";
 async function mcp(req, env, key, ctx) {
   let msg; try { msg = await req.json(); } catch { return J({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   if (Array.isArray(msg)) return J({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batch not supported" } }, 400);
@@ -236,6 +271,10 @@ async function mcp(req, env, key, ctx) {
       trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["check_mcp_server_health", "watch_server"].includes(params.name) ? params.arguments?.server : null);
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
+      if (UP_NAMES.has(params.name)) {
+        const proxied = await proxyUpstream(env, params.name, a, params._meta, g.h);
+        return ok(proxied);
+      }
       let r;
       if (params.name === "check_mcp_server_health") r = decorate(await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: g.h, bearer: a.bearer_token }));
       else if (params.name === "find_alternative_mcp_servers") r = decorate(await alternatives(env, a.query, a.limit));
@@ -250,6 +289,7 @@ async function mcp(req, env, key, ctx) {
     default: return err(-32601, "method not found");
   }
 }
+
 
 const today = () => new Date().toISOString().slice(0, 10);
 function track(env, ctx, endpoint, channel, outcome) {
@@ -368,7 +408,7 @@ export default {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + rw}" height="20" role="img" aria-label="toolweather: ${txt}"><rect width="${lw}" height="20" rx="3" fill="#4b5563"/><rect x="${lw}" width="${rw}" height="20" rx="3" fill="${col}"/><rect x="${lw - 3}" width="6" height="20" fill="${col}"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="8" y="14">toolweather</text><text x="${lw + 6}" y="14">${txt}</text></g></svg>`;
       return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=300" } });
     }
-    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", endpoints: ["/v1/keys", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
+    if (p === "/") return J({ name: "Toolweather", suite: ["mcp_health", "upstream_api_status"], what: "One MCP for MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations.", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", mcp_tools: TOOLS.map((t) => t.name), upstream_api: UP_URL, endpoints: ["/v1/keys", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
   async scheduled(ev, env, ctx) {

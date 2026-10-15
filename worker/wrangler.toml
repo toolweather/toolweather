@@ -9,5 +9,9 @@ binding = "DB"
 database_name = "toolweather"
 database_id = "f3fca32f-f22b-4227-a860-7bccf8295a76"
 
+[[services]]
+binding = "UPSTREAM"
+service = "upstream"
+
 [triggers]
 crons = ["*/5 * * * *"]
