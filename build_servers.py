@@ -21,6 +21,7 @@ leaderboard if the cap binds; the page says so. At the current probe size
 import datetime, hashlib, html, os, re, shutil, sys
 from urllib.parse import quote
 import tw_core as tw
+from site_install import INSTALL_CSS, install_section
 
 ORIGIN = "https://toolweather.pages.dev"
 BADGE_ORIGIN = "https://toolweather.toolweather.workers.dev"
@@ -105,7 +106,7 @@ pre{background:#2A241C;border:1px solid #4A3F34;border-radius:12px;padding:14px;
 .banner{background:var(--authb);color:var(--autht);border-radius:12px;padding:12px 14px;margin:0 0 16px}
 footer{color:var(--mut);font-size:12px;margin-top:28px}
 @media(max-width:800px){.stats{grid-template-columns:1fr 1fr}h1{font-size:32px}dl{grid-template-columns:1fr}main{padding:24px 16px 48px}}
-"""
+""" + INSTALL_CSS
 
 THEME = """<script>(function(){var t=localStorage.getItem("tw-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t})();
 function twToggle(){var d=document.documentElement,t=d.dataset.theme==="dark"?"light":"dark";d.dataset.theme=t;localStorage.setItem("tw-theme",t);var b=document.getElementById("tg");if(b)b.textContent=t==="dark"?"Light mode":"Dark mode"}</script>"""
@@ -386,6 +387,7 @@ def _leaderboard(servers, slugs, paged, capped_note, metar):
 <p class="metar"><span class="chip">HEALTH</span>{_esc(metar)}</p>
 <h1>MCP readiness leaderboard</h1>
 <p class="sub">Ranked by health (ok first), then latency. Spec readiness is dual, modern_only, or legacy_only from the latest probe. <a href="/">Status page</a></p>
+{install_section()}
 {banner}
 <div class="stats"><div class="stat"><b>{len(servers)}</b><span>servers</span></div><div class="stat"><b>{n_ready}</b><span>ready (2026-07-28)</span></div>
 <div class="stat"><b>{n_legacy}</b><span>legacy-only</span></div><div class="stat"><b>{n_down}</b><span>down / auth</span></div></div>
@@ -438,6 +440,7 @@ def _server_page(s, slug):
 <pre id="snip">{_esc(md)}</pre>
 <button class="copy" type="button" onclick="twCopy()">Copy</button>
 <p class="note">Registry name <code>{_esc(name)}</code> · page <a href="{_esc(purl)}">{_esc(purl)}</a></p>
+<p class="note"><a href="/#install">Copy this MCP config</a> for the Toolweather suite (free, no key), then call <code>check_mcp_server_health</code> with this server's name.</p>
 {_footer()}
 <script>function twCopy(){{var b=document.querySelector(".copy"),el=document.getElementById("snip"),text=el.textContent.replace(/^\\n+|\\n+$/g,"");var ta=document.createElement("textarea");ta.value=text;ta.setAttribute("readonly","");ta.style.position="fixed";ta.style.left="-9999px";document.body.appendChild(ta);ta.select();var ok=false;try{{ok=document.execCommand("copy")}}catch(e){{}}ta.remove();if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(text).catch(function(){{}});b.textContent=ok?"Copied":"Copy failed";setTimeout(function(){{b.textContent="Copy"}},2500)}}</script>"""
     return _shell(title, _meta_description(name, s["status"], s["readiness"]), purl, "../style.css", body, narrow=True)
@@ -608,7 +611,30 @@ def self_check():
         home = open(os.path.join(root, "site/index.html"), encoding="utf-8").read()
         assert "QNH1013" in home and 'id="srvcheck"' in home and "is_safe_to_call" in home
         assert "One connection gives you three tools." in home
+        import site_install
+        assert "Copy this MCP config" in home
+        assert 'href="#install"' in home
+        assert site_install.CURSOR_DEEPLINK.endswith(
+            "eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9")
+        for pid, text in (
+            ("cfg-cursor", site_install.CURSOR_JSON),
+            ("cfg-claude-code", site_install.CLAUDE_CODE_JSON),
+            ("cfg-desktop", site_install.CLAUDE_DESKTOP_JSON),
+            ("cfg-smithery", site_install.SMITHERY_JSON),
+            ("cfg-remote-url", site_install.MCP_URL),
+            ("cfg-claude-cli", site_install.CLAUDE_CLI),
+        ):
+            m = re.search(rf'id="{pid}">(.*?)</pre>', home, re.S)
+            assert m, pid
+            assert html.unescape(m.group(1)) == text, (pid, html.unescape(m.group(1)), text)
+        remote = home.split('id="snip-remote"', 1)[1].split("</article>", 1)[0]
+        assert "X-API-Key" not in remote and '"headers"' not in remote
+        assert "no Authorization header" in remote
+        assert '"type": "http"' in site_install.CLAUDE_CODE_JSON
+        assert '"type"' not in site_install.CURSOR_JSON
         assert 'id="ready"' in board and 'id="legacy"' in board and 'id="down"' in board
+        assert "Copy this MCP config" in board and 'id="snip-remote"' in board
+        assert site_install.MCP_URL in board
         assert board.find("com.ufcalendar/fight-api") < board.find("io.github.foo/bar")
         assert ">1</td>" in board
         page = os.path.join(tmp, "servers/com.ufcalendar--fight-api/index.html")
@@ -620,6 +646,7 @@ def self_check():
         assert "down" in parser.desc.lower() and "com.ufcalendar/fight-api" in parser.desc
         assert parser.canon == "https://toolweather.pages.dev/servers/com.ufcalendar--fight-api/"
         assert "index,follow" in parser.robots
+        assert 'href="/#install"' in text and "Copy this MCP config" in text
         assert "https://toolweather.toolweather.workers.dev/badge/com.ufcalendar/fight-api.svg" in text
         assert "[![Toolweather](https://toolweather.toolweather.workers.dev/badge/com.ufcalendar/fight-api.svg)](https://toolweather.pages.dev/servers/com.ufcalendar--fight-api/)" in text
         assert "description changed" in text and "search" in text

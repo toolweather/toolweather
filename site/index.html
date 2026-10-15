@@ -88,21 +88,38 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
 .products p{margin:0 0 10px;color:var(--mut);font-size:13.5px}
 .tools{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:0}
 .tools code{color:var(--ink);background:var(--wash);border-radius:6px;padding:2px 6px;font-size:12px}
-.install{margin-bottom:22px}.try{margin:0 0 12px;font-size:14.5px}
-.cfg{margin-top:14px}.cfgh{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
-.cfgh h3{margin:0;font-size:14px;font-weight:500}.cfgh span{color:var(--mut);font-size:12.5px;font-family:var(--mono)}
-.copy{margin-left:auto;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:3px 10px;font:500 13px var(--sans);cursor:pointer}
-.addcursor{display:inline-flex;margin:0 0 12px}.addcursor img{height:32px;width:auto}
+.install{margin:8px 0 22px}
+.install>h2{font-family:var(--display);font-weight:500;font-size:32px;letter-spacing:.015em;line-height:1.15;margin:0 0 8px;color:var(--ink)}
+.install>h2::before{content:"";display:block;width:36px;height:2px;background:var(--clay);margin:0 0 12px}
+.install .try{margin:0 0 14px;color:var(--mut);font-size:14.5px}
+.snipgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.card.snip{margin:0;border-top:2px solid var(--clay);min-width:0;padding:16px 16px 18px}
+.sniphead{display:flex;align-items:flex-start;gap:8px}
+.sniphead h3{font-family:var(--display);font-size:26px;font-weight:500;letter-spacing:.01em;margin:0;color:var(--ink);line-height:1.15}
+.where{margin:2px 0 10px;color:var(--mut);font-family:var(--mono);font-size:12px}
+.note-sm{margin:8px 0 0;color:var(--mut);font-size:12.5px}
+.blocklab{display:flex;align-items:baseline;gap:8px;margin:12px 0 6px}
+.blocklab h4{margin:0;font:500 13.5px var(--sans);color:var(--ink)}
+.blocklab span{color:var(--mut);font-family:var(--mono);font-size:12px}
+.install .copy{margin-left:auto;flex:none;background:var(--card);border:1px solid var(--clay);color:var(--acc);border-radius:8px;padding:3px 10px;font:500 13px var(--sans);cursor:pointer}
+.install .copy:hover{border-color:var(--ink)}
+.snip pre,.quota pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;margin:0}
+.addcursor{display:inline-flex;margin:0 0 10px}.addcursor img{height:32px;width:auto}
 .addcursor .for-dark{display:none}
 :root[data-theme=dark] .addcursor .for-light{display:none}
 :root[data-theme=dark] .addcursor .for-dark{display:inline}
-.install pre{white-space:pre;word-break:normal;overflow:auto}
+.deeplink{margin-top:10px}
+.deeplink summary{cursor:pointer;color:var(--acc);font-size:13px}
+.card.quota{margin-top:14px}
+.card.quota h3{margin:0;font:500 16px var(--sans);color:var(--ink)}
+.quotahead{display:flex;align-items:baseline;gap:8px;margin:0 0 8px}
+@media(max-width:980px){.snipgrid{grid-template-columns:1fr}.install>h2{font-size:28px}}
 @media(max-width:980px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:800px){.products{grid-template-columns:1fr}.hero{font-size:24px}h1{font-size:34px}.grid{grid-template-columns:1fr}}
 @media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.wrap{padding:24px 16px 48px}}
 </style></head><body><div class="wrap">
 <svg class="isobars" viewBox="0 0 1200 280" preserveAspectRatio="none" aria-hidden="true"><path d="M-40 78 C 150 28, 280 148, 450 74 S 740 8, 940 92 S 1160 168, 1280 64" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M-40 142 C 170 92, 310 202, 490 132 S 800 52, 1000 148 S 1200 214, 1300 132" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/><path d="M-20 206 C 190 156, 350 266, 550 196 S 880 116, 1100 206 S 1280 266, 1340 196" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
-<header><div class="logo"><img class="mark" src="mark.svg" width="56" height="56" alt=""><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check Oct 15, 2026 04:57 UTC<a href="/servers/" style="margin-left:12px">Leaderboard</a><button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
+<header><div class="logo"><img class="mark" src="mark.svg" width="56" height="56" alt=""><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check Oct 15, 2026 04:57 UTC<a href="#install">Install</a><a href="/servers/">Leaderboard</a><button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
 <p class="metar"><span class="chip">BUNDLE</span>TW 150457Z OPEN48 AUTH49 HS187 QNH1013</p>
 <h1>MCP health, API status, spend checks, and merchant checks for agents</h1>
 <form class="check" id="srvcheck" method="get" action="https://toolweather.toolweather.workers.dev/v1/is_safe_to_call"><label for="srvq">Check a server</label><input id="srvq" name="server" placeholder="Registry name or MCP URL" autocomplete="off"><button class="btn" type="submit">Check</button></form>
@@ -113,20 +130,31 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
 <div class="card"><h2>Upstream</h2><p>API status and model retirements, across about 40 providers.</p><ul class="tools"><li><code>check_api_status</code></li><li><code>check_model_deprecation</code></li><li><code>list_recent_api_changes</code></li><li><code>list_providers</code></li><li><code>get_digest</code></li></ul></div>
 <div class="card"><h2>SpendGate</h2><p>approve, ask_human, or block before an agent pays.</p><ul class="tools"><li><code>score_spend</code></li><li><code>get_quota</code></li><li><code>spendgate_get_api_key</code></li></ul></div>
 </div>
-<div class="card install" id="install"><h2>Connect once</h2>
-<p class="try">Free to try. No signup. These configs connect with no key (50 calls/day). Call <code>get_api_key</code> to raise the quota to 1,000 calls/day and 3 watches, then send that key as <code>X-API-Key</code>.</p>
-<a class="addcursor" href="cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&amp;config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9"><img class="for-light" src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add to Cursor" height="32"><img class="for-dark" src="https://cursor.com/deeplink/mcp-install-light.svg" alt="Add to Cursor" height="32"></a>
-<div class="cfg"><div class="cfgh"><h3>Cursor install link</h3><button class="copy" type="button" data-copy="cfg-deeplink">Copy</button></div>
-<pre id="cfg-deeplink">cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Cursor</h3><span>~/.cursor/mcp.json</span><button class="copy" type="button" data-copy="cfg-cursor">Copy</button></div>
+<section class="install" id="install" aria-labelledby="install-title">
+<h2 id="install-title">Copy this MCP config</h2>
+<p class="try">Free to try. No signup. These configs connect with no key (50 calls/day) and no Authorization header. Call <code>get_api_key</code> to raise the quota to 1,000 calls/day and 3 watches, then send that key as <code>X-API-Key</code>.</p>
+<div class="snipgrid">
+<article class="card snip" id="snip-cursor">
+<div class="sniphead"><h3>Cursor</h3><button class="copy" type="button" data-copy="cfg-cursor" aria-label="Copy Cursor mcp.json">Copy</button></div>
+<p class="where">~/.cursor/mcp.json</p>
+<a class="addcursor" href="cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&amp;config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9"><img class="for-light" src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add to Cursor" height="32"><img class="for-dark" src="https://cursor.com/deeplink/mcp-install-light.svg" alt="" height="32"></a>
 <pre id="cfg-cursor">{
   "mcpServers": {
     "toolweather": {
       "url": "https://toolweather.toolweather.workers.dev/mcp"
     }
   }
-}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Claude Code</h3><span>.mcp.json</span><button class="copy" type="button" data-copy="cfg-claude-code">Copy</button></div>
+}</pre>
+<details class="deeplink"><summary>Cursor install link</summary>
+<div class="blocklab"><span>cursor:// deeplink</span><button class="copy" type="button" data-copy="cfg-deeplink" aria-label="Copy Cursor install link">Copy</button></div>
+<pre id="cfg-deeplink">cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&amp;config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9</pre>
+</details>
+<p class="note-sm">Cursor asks before it installs. The link encodes <code>{"url":"https://toolweather.toolweather.workers.dev/mcp"}</code>.</p>
+</article>
+<article class="card snip" id="snip-claude">
+<div class="sniphead"><h3>Claude</h3></div>
+<p class="where">Code and Desktop. No key.</p>
+<div class="blocklab"><h4>Claude Code</h4><span>.mcp.json</span><button class="copy" type="button" data-copy="cfg-claude-code" aria-label="Copy Claude Code config">Copy</button></div>
 <pre id="cfg-claude-code">{
   "mcpServers": {
     "toolweather": {
@@ -134,10 +162,11 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
       "url": "https://toolweather.toolweather.workers.dev/mcp"
     }
   }
-}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Claude Code CLI</h3><button class="copy" type="button" data-copy="cfg-claude-cli">Copy</button></div>
-<pre id="cfg-claude-cli">claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Claude Desktop</h3><span>claude_desktop_config.json</span><button class="copy" type="button" data-copy="cfg-desktop">Copy</button></div>
+}</pre>
+<p class="note-sm">Set <code>"type": "http"</code>. Claude Code treats a <code>url</code> without <code>type</code> as stdio and skips it.</p>
+<div class="blocklab"><h4>Claude Code CLI</h4><button class="copy" type="button" data-copy="cfg-claude-cli" aria-label="Copy Claude Code CLI">Copy</button></div>
+<pre id="cfg-claude-cli">claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp</pre>
+<div class="blocklab"><h4>Claude Desktop</h4><span>claude_desktop_config.json</span><button class="copy" type="button" data-copy="cfg-desktop" aria-label="Copy Claude Desktop config">Copy</button></div>
 <pre id="cfg-desktop">{
   "mcpServers": {
     "toolweather": {
@@ -145,8 +174,24 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
       "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp"]
     }
   }
-}</pre></div>
-<div class="cfg"><div class="cfgh"><h3>Raise the quota</h3><span>after get_api_key</span><button class="copy" type="button" data-copy="cfg-raise">Copy</button></div>
+}</pre>
+<p class="note-sm">Remote HTTP through <code>mcp-remote</code>. No key on the free tier.</p>
+</article>
+<article class="card snip" id="snip-remote">
+<div class="sniphead"><h3>Smithery / remote URL</h3><button class="copy" type="button" data-copy="cfg-remote-url" aria-label="Copy MCP endpoint URL">Copy</button></div>
+<p class="where">streamable HTTP</p>
+<pre id="cfg-remote-url">https://toolweather.toolweather.workers.dev/mcp</pre>
+<div class="blocklab"><h4>Smithery HTTP config</h4><button class="copy" type="button" data-copy="cfg-smithery" aria-label="Copy Smithery HTTP config">Copy</button></div>
+<pre id="cfg-smithery">{
+  "type": "http",
+  "url": "https://toolweather.toolweather.workers.dev/mcp"
+}</pre>
+<p class="note-sm">Paste the URL into Smithery or any remote HTTP client (Cline uses this same URL). <code>type</code> and <code>url</code> only. No API key and no Authorization header.</p>
+</article>
+</div>
+<article class="card quota">
+<div class="quotahead"><h3>Optional: raise the quota</h3><span class="where" style="margin:0">after get_api_key</span><button class="copy" type="button" data-copy="cfg-raise" aria-label="Copy quota header note">Copy</button></div>
+<p class="note-sm" style="margin-top:0">Skip this on the free tier. Placeholders only.</p>
 <pre id="cfg-raise">Cursor and Claude Code, inside toolweather:
 "headers": { "X-API-Key": "&lt;key from get_api_key&gt;" }
 
@@ -154,23 +199,32 @@ Claude Code CLI:
 claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp --header "X-API-Key: &lt;key&gt;"
 
 Claude Desktop args, plus "env": { "TW_KEY": "&lt;key&gt;" }:
-"--header", "X-API-Key:${TW_KEY}"</pre></div>
-</div>
+"--header", "X-API-Key:${TW_KEY}"
+</pre>
+</article>
+</section>
 <script>
 document.querySelectorAll("[data-copy]").forEach(function(b){
   b.addEventListener("click", function(){
     var el=document.getElementById(b.getAttribute("data-copy"));
+    if(!el) return;
     var text=el.textContent.replace(/^\n+|\n+$/g, "");
-    var ta=document.createElement("textarea");
-    ta.value=text; ta.setAttribute("readonly","");
-    ta.style.position="fixed"; ta.style.top="0"; ta.style.left="0"; ta.style.opacity="0";
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    var ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
-    ta.remove();
-    if(navigator.clipboard&&window.isSecureContext) navigator.clipboard.writeText(text).catch(function(){});
-    var prev=b.textContent;
-    b.textContent=ok?"Copied":"Copy failed";
-    setTimeout(function(){ b.textContent=prev; }, 2500);
+    function done(ok){
+      b.textContent=ok?"Copied":"Copy failed";
+      setTimeout(function(){ b.textContent="Copy"; }, 2500);
+    }
+    function fallback(){
+      var ta=document.createElement("textarea");
+      ta.value=text; ta.setAttribute("readonly","");
+      ta.style.position="fixed"; ta.style.top="0"; ta.style.left="0"; ta.style.opacity="0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
+      ta.remove();
+      done(ok);
+    }
+    if(navigator.clipboard&&window.isSecureContext){
+      navigator.clipboard.writeText(text).then(function(){ done(true); }, fallback);
+    } else fallback();
   });
 });
 </script>
