@@ -46,8 +46,8 @@ def key_signals():
         sum(CASE WHEN day>=? THEN calls END) c7, sum(CASE WHEN day>=? AND day<? THEN calls END) cprev7,
         count(DISTINCT CASE WHEN day>=? THEN day END) active7, sum(CASE WHEN day>=? THEN limited END) capped30,
         sum(CASE WHEN day>=? AND endpoint='suggest_alternatives' THEN calls END) alt7, sum(CASE WHEN day>=? AND channel='mcp' THEN calls END) mcp7
-        FROM key_daily GROUP BY key_hash ORDER BY c7 DESC""", [d7, d14, d7, d7, d30, d7, d7])
-    peak = {r["key_hash"]: r["p"] for r in rows("SELECT key_hash, max(c) p FROM (SELECT key_hash, day, sum(calls) c FROM key_daily WHERE day>=? GROUP BY 1,2) GROUP BY 1", [d30])}
+        FROM key_daily WHERE channel!='webhook' GROUP BY key_hash ORDER BY c7 DESC""", [d7, d14, d7, d7, d30, d7, d7])
+    peak = {r["key_hash"]: r["p"] for r in rows("SELECT key_hash, max(c) p FROM (SELECT key_hash, day, sum(calls) c FROM key_daily WHERE day>=? AND channel!='webhook' GROUP BY 1,2) GROUP BY 1", [d30])}
     srv = {}
     for r in rows("SELECT key_hash, count(DISTINCT server) n FROM key_servers WHERE day>=? GROUP BY 1", [d7]): srv[r["key_hash"]] = r["n"]
     top = rows("SELECT server, sum(n) n, count(DISTINCT key_hash) k FROM key_servers WHERE day>=? GROUP BY 1 ORDER BY n DESC LIMIT 5", [d30])
@@ -71,6 +71,23 @@ def key_signals():
     print("Legend: trend = last 7d vs previous 7d; act/7 = active days in last 7; peak% = busiest day vs daily limit (30d);"
           " cap30 = calls rejected at cap (30d); churned = no calls in 14d; dormant = none in 7d.")
 
+def watch_signals():
+    """Change-alert usage: watches per key (free limit 3), limit hits, events and webhook delivery health."""
+    d30 = (datetime.date.today() - datetime.timedelta(days=29)).isoformat()
+    print("\n=== Change alerts (watches) ===")
+    w = rows("SELECT count(*) n, count(DISTINCT key_hash) k, sum(active) a FROM watches")[0]
+    full = rows("SELECT count(*) n FROM (SELECT key_hash FROM watches WHERE active=1 GROUP BY 1 HAVING count(*)>=3)")[0]["n"]
+    print(f"Watches: {w['n'] or 0} ({w['a'] or 0} active) across {w['k'] or 0} keys; keys at the 3-watch free limit: {full}")
+    lim = rows("SELECT coalesce(sum(calls),0) c FROM api_daily WHERE day>=? AND endpoint='watches.limit_hit'", [d30])[0]["c"]
+    print(f"Watch-limit hits (30d, REST+MCP): {lim}  <- strongest signal of demand for a paid plan")
+    for r in rows("SELECT endpoint, sum(calls) c, count(DISTINCT key_hash) k FROM key_daily WHERE day>=? AND (channel='webhook' OR endpoint IN ('watches.create','watches.list','watches.delete','watch_server','list_watches','unwatch_server')) GROUP BY 1 ORDER BY 1", [d30]):
+        print(f"  {r['endpoint']:34} {r['c']:>6} calls/events  {r['k']} keys")
+    top = rows("SELECT server, count(*) n FROM watches WHERE active=1 GROUP BY 1 ORDER BY n DESC LIMIT 5")
+    if top: print("Most-watched servers: " + ", ".join(f"{t['server']} ({t['n']})" for t in top))
+    dis = rows("SELECT count(*) n FROM watches WHERE active=0")[0]["n"]
+    if dis: print(f"Watches disabled after failed deliveries: {dis}")
+
 if __name__ == "__main__":
     for d in (7, 30): report(d)
     key_signals()
+    watch_signals()

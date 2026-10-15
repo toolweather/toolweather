@@ -105,6 +105,7 @@ async function mcp(req, env, key, ctx) {
       else if (params.name === "list_watches") r = (await listWatches(env, g.h)).body;
       else if (params.name === "unwatch_server") r = (await deleteWatch(env, g.h, a.id)).body;
       else return err(-32602, "unknown tool");
+      if (r.error === "watch_limit_reached") track(env, ctx, "watches.limit_hit", "mcp", "limited");
       if (r.error && params.name.includes("watch")) return ok({ isError: r.error !== "watch_limit_reached", content: [{ type: "text", text: r.message || r.error }], structuredContent: r });
       return ok({ content: [{ type: "text", text: JSON.stringify(r, null, 2) }], structuredContent: r });
     }
