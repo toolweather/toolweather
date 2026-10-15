@@ -227,7 +227,7 @@ const UP_TOOLS = [
 // get_quota and score_spend do not match any Toolweather tool, so they keep SpendGate's names.
 const SG_TOOLS = [
   { name: "score_spend", title: "Score a planned spend before an agent pays",
-    description: `Score a planned payment before sending it. Call this before any tool that transfers crypto, buys a gift card, starts a subscription, or pays an API or merchant. Pass amount in USD, category, merchant or endpoint URL, and any daily or monthly budget still remaining. Returns score 0-100, verdict (approve | ask_human | block), reasons, and recommended_action. approve means pay; ask_human means stop and ask a person; block means do not pay. Do not reword the purpose and retry to fish for approve (v1 scoring is deterministic). Example: {"amount":12,"category":"api_call","merchant":"https://api.example.com","daily_budget_remaining":40}. Free within SpendGate's own quota (100/day anonymous, 1,000/day with a SpendGate key), then $0.001 via x402 (USDC on Base). Does not use the Toolweather call quota. Optional api_key is a SpendGate key (sg_live_…), not a Toolweather key. Part of the Toolweather suite (SpendGate).`,
+    description: `Score a planned payment before sending it. Call this before any tool that transfers crypto, buys a gift card, starts a subscription, or pays an API or merchant. Pass amount in USD, category, merchant or endpoint URL, and any daily or monthly budget still remaining. Returns score 0-100, verdict (approve | ask_human | block), reasons, and recommended_action. approve means pay; ask_human means stop and ask a person; block means do not pay. Do not reword the purpose and retry to fish for approve (v1 scoring is deterministic). Example: {"amount":12,"category":"api_call","merchant":"https://api.example.com","daily_budget_remaining":40}. Free within SpendGate's own quota (100/day anonymous, 1,000/day with a SpendGate key), then $0.001 via x402 (USDC on Base). Does not use the Toolweather call quota. Optional api_key is a SpendGate key (sg_live_…), not a Toolweather key. For a stable SpendGate daily cap through this bundle, call get_api_key first (Toolweather key) or pass a SpendGate sg_live_ key; anonymous callers share IP/session-based caps that can reset on rotating egress. Part of the Toolweather suite (SpendGate).`,
     inputSchema: { type: "object", additionalProperties: false, required: ["amount"], properties: {
       amount: { type: "number", description: "Planned spend in USD, not in token atomic units." },
       currency: { type: "string", description: "Payment currency. Defaults to USDC." },
@@ -236,14 +236,14 @@ const SG_TOOLS = [
       merchant: { type: "string", description: "Merchant name or https endpoint URL that will receive the spend." },
       endpoint: { type: "string", description: "Alias of merchant when the payee is an API URL." },
       agent_id: { type: "string", description: "Your agent or key id. Echoed, not scored in v1." },
-      api_key: { type: "string", description: "Optional SpendGate key (sg_live_…). Not a Toolweather key. Anonymous callers share a smaller daily cap." },
+      api_key: { type: "string", description: "Optional SpendGate key (sg_live_…). Not a Toolweather key. For a stable daily cap pass an sg_live_ key, or call get_api_key first for a Toolweather key. Anonymous callers share a smaller IP/session cap that can reset on rotating egress." },
       daily_budget_remaining: { type: "number", description: "USD still available today. Amount above this is blocked." },
       monthly_budget_remaining: { type: "number", description: "USD still available this month. Amount above this is blocked." },
       risk_hints: { type: "array", items: { type: "string" }, description: "Self-reported hints. Raising: new_payee, new_merchant, first_payment, high_velocity, mismatched_purpose, off_platform, shared_wallet. Lowering: trusted_repeat, within_policy, human_preapproved. known_merchant marks the payee known." },
     } }, annotations: { title: "Score a planned spend", ...RO } },
   { name: "get_quota", title: "SpendGate free scores left today",
-    description: "Read how many free SpendGate scores remain today for this anonymous caller or SpendGate API key. Does not consume a score, is not billed, and does not use the Toolweather call quota. This is SpendGate's cap, not Toolweather's daily check quota. Optional api_key is a SpendGate key (sg_live_…). Part of the Toolweather suite (SpendGate).",
-    inputSchema: { type: "object", additionalProperties: false, properties: { api_key: { type: "string", description: "Optional sg_live_ key. Omit to read the anonymous quota for this client." } } }, annotations: { title: "SpendGate quota", ...RO } },
+    description: "Read how many free SpendGate scores remain today for this anonymous caller or SpendGate API key. Does not consume a score, is not billed, and does not use the Toolweather call quota. This is SpendGate's cap, not Toolweather's daily check quota. Optional api_key is a SpendGate key (sg_live_…). For a stable SpendGate daily cap through this bundle, call get_api_key first (Toolweather key) or pass a SpendGate sg_live_ key; anonymous callers share IP/session-based caps that can reset on rotating egress. Part of the Toolweather suite (SpendGate).",
+    inputSchema: { type: "object", additionalProperties: false, properties: { api_key: { type: "string", description: "Optional sg_live_ key. Omit to read the anonymous IP/session cap, which can reset on rotating egress. For a stable cap, pass an sg_live_ key or call get_api_key first (Toolweather key)." } } }, annotations: { title: "SpendGate quota", ...RO } },
   { name: "spendgate_get_api_key", title: "Get a free SpendGate API key",
     description: "Mint a free SpendGate API key (sg_live_…). The secret is returned once. Store it and pass it as the api_key argument on later score_spend or get_quota calls. Do not call this on every turn. This is SpendGate's get_api_key, renamed to spendgate_get_api_key because get_api_key on this server mints a Toolweather key (tw_…). Not billed. Part of the Toolweather suite (SpendGate).",
     inputSchema: { type: "object", additionalProperties: false, properties: { label: { type: "string", description: "Optional label stored with the key, up to 80 characters." } } }, annotations: { title: "Get SpendGate API key", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
@@ -277,13 +277,37 @@ const SUITE_PROXY = new Map([
 ]);
 const UP_URL = SUITE.upstream.url;
 const SG_URL = SUITE.spendgate.url;
+// Visible token chars only (UUID, hex, base64/base64url). 8–128 so a short or huge header cannot mint a client id.
+const MCP_SESSION_RE = /^[A-Za-z0-9._~+/=-]{8,128}$/;
+// x-tw-bundle-client. A Toolweather free key keeps g.h (sha256 hex, no anon: prefix).
+// Anonymous + a safe Mcp-Session-Id: sha256("tw-mcp-session|"+id), 64 hex chars, not anon:,
+// so the SpendGate/Upstream cap survives rotating cloud egress. No session: keep anon:+IP hash
+// so SpendGate can apply the anonymous daily limit.
+async function bundleClientId(g, req) {
+  const h = g && g.h != null ? String(g.h) : "";
+  if ((g && g.plan === "free_key") || (h && !h.startsWith("anon:"))) return h;
+  const sid = String((req && req.headers && req.headers.get("mcp-session-id")) || "").trim();
+  if (MCP_SESSION_RE.test(sid)) return sha256("tw-mcp-session|" + sid);
+  return h;
+}
+// Upstream takeFree only accepts /^[a-f0-9]{16,128}$/i. SpendGate still gets the anon: prefix
+// (its anonymous-tier marker). Strip that prefix here and forward the same hash so Upstream
+// can attribute the client; if the remainder is not that hex, omit the bundle client.
+function bundleHeaderClient(productId, clientId) {
+  if (productId === "upstream" && typeof clientId === "string" && clientId.startsWith("anon:")) {
+    const hex = clientId.slice(5);
+    return /^[a-f0-9]{16,128}$/i.test(hex) ? hex : "";
+  }
+  return clientId;
+}
 async function proxySuite(env, id, remoteName, args, meta, clientId) {
   const cfg = SUITE[id];
   const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: remoteName, arguments: args || {}, ...(meta ? { _meta: meta } : {}) } });
   const headers = { "content-type": "application/json", "user-agent": "toolweather-suite/0.5", accept: "application/json" };
-  if (env.BUNDLE_PROXY_SECRET && clientId) {
+  const bundleClient = bundleHeaderClient(id, clientId);
+  if (env.BUNDLE_PROXY_SECRET && bundleClient) {
     headers["x-tw-bundle-secret"] = env.BUNDLE_PROXY_SECRET;
-    headers["x-tw-bundle-client"] = clientId;
+    headers["x-tw-bundle-client"] = bundleClient;
   }
   const init = { method: "POST", headers, body };
   const endpoint = cfg.url + "/mcp";
@@ -315,7 +339,7 @@ function decorate(r) {
     checked_at: r.checked_at || r.last_checked || null, freshness: { age_seconds: age, fresh: age != null && age <= FRESH_S, source: r.source || "scheduled_probe" }, ...r };
 }
 const INFO = { name: "toolweather", title: "Toolweather", version: "0.5.0" };
-const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations + spend scoring. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. Before an agent pays, transfers crypto, buys a gift card, or starts a paid subscription, call score_spend (approve = pay, ask_human = stop and ask a person, block = do not pay). get_quota reads SpendGate's free daily cap. spendgate_get_api_key mints a SpendGate key; get_api_key mints a Toolweather key. Zero signup: call with no key (50 free/day anonymous) or get_api_key (1,000/day, 3 watches). Over the free quota, tools return an x402 payment requirement in _meta[\"x402/payment-required\"] (USDC on Base, $0.001 per check, pay-per-call, no subscription); retry with params._meta[\"x402/payment\"]. SpendGate tools use SpendGate's own quota and prices. Every result starts with a one-line summary.";
+const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations + spend scoring. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. Before an agent pays, transfers crypto, buys a gift card, or starts a paid subscription, call score_spend (approve = pay, ask_human = stop and ask a person, block = do not pay). get_quota reads SpendGate's free daily cap. For a stable SpendGate daily cap through this bundle, call get_api_key first (Toolweather key) or pass a SpendGate sg_live_ key; anonymous callers share IP/session-based caps that can reset on rotating egress. spendgate_get_api_key mints a SpendGate key; get_api_key mints a Toolweather key. Zero signup: call with no key (50 free/day anonymous) or get_api_key (1,000/day, 3 watches). Over the free quota, tools return an x402 payment requirement in _meta[\"x402/payment-required\"] (USDC on Base, $0.001 per check, pay-per-call, no subscription); retry with params._meta[\"x402/payment\"]. SpendGate tools use SpendGate's own quota and prices. Every result starts with a one-line summary.";
 async function mcp(req, env, key, ctx) {
   let msg; try { msg = await req.json(); } catch { return J({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   if (Array.isArray(msg)) return J({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batch not supported" } }, 400);
@@ -365,7 +389,7 @@ async function mcp(req, env, key, ctx) {
       };
       if (MP[params.name] && (pay || g.over)) return ok(await payMcp(req, env, params.name, MP[params.name], pay, () => runTool(true), g.msg || "Paid call."));
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
-      if (via) return ok(await proxySuite(env, via.id, via.remote, a, params._meta, g.h));
+      if (via) return ok(await proxySuite(env, via.id, via.remote, a, params._meta, await bundleClientId(g, req)));
       if (MP[params.name]) return ok(await runTool(false));
       let r;
       if (params.name === "watch_server") {

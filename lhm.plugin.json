@@ -313,7 +313,7 @@
     {
       "name": "score_spend",
       "title": "Score a planned spend before an agent pays",
-      "description": "Score a planned payment before sending it. Call this before any tool that transfers crypto, buys a gift card, starts a subscription, or pays an API or merchant. Pass amount in USD, category, merchant or endpoint URL, and any budget remaining. Returns score 0-100, verdict approve | ask_human | block, reasons, and recommended_action. approve means pay; ask_human means stop and ask a person; block means do not pay. Example: {\"amount\":12,\"category\":\"api_call\",\"merchant\":\"https://api.example.com\",\"daily_budget_remaining\":40}. Free within SpendGate's own quota (100/day anonymous, 1,000/day with a SpendGate key), then $0.001 via x402. Optional api_key is a SpendGate key (sg_live_…), not a Toolweather key. Part of the Toolweather suite (SpendGate).",
+      "description": "Score a planned payment before sending it. Call this before any tool that transfers crypto, buys a gift card, starts a subscription, or pays an API or merchant. Pass amount in USD, category, merchant or endpoint URL, and any budget remaining. Returns score 0-100, verdict approve | ask_human | block, reasons, and recommended_action. approve means pay; ask_human means stop and ask a person; block means do not pay. Example: {\"amount\":12,\"category\":\"api_call\",\"merchant\":\"https://api.example.com\",\"daily_budget_remaining\":40}. Free within SpendGate's own quota (100/day anonymous, 1,000/day with a SpendGate key), then $0.001 via x402. Optional api_key is a SpendGate key (sg_live_…), not a Toolweather key. For a stable SpendGate daily cap through this bundle, call get_api_key first (Toolweather key) or pass a SpendGate sg_live_ key; anonymous callers share IP/session-based caps that can reset on rotating egress. Part of the Toolweather suite (SpendGate).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -326,7 +326,7 @@
           "merchant": { "type": "string", "description": "Merchant name or https endpoint URL that will receive the spend." },
           "endpoint": { "type": "string", "description": "Alias of merchant when the payee is an API URL." },
           "agent_id": { "type": "string", "description": "Your agent or key id. Echoed, not scored in v1." },
-          "api_key": { "type": "string", "description": "Optional SpendGate key (sg_live_…). Not a Toolweather key." },
+          "api_key": { "type": "string", "description": "Optional SpendGate key (sg_live_…). Not a Toolweather key. For a stable daily cap pass an sg_live_ key, or call get_api_key first for a Toolweather key. Anonymous callers share a smaller IP/session cap that can reset on rotating egress." },
           "daily_budget_remaining": { "type": "number", "description": "USD still available today. Amount above this is blocked." },
           "monthly_budget_remaining": { "type": "number", "description": "USD still available this month. Amount above this is blocked." },
           "risk_hints": { "type": "array", "items": { "type": "string" }, "description": "Self-reported hints. Raising: new_payee, new_merchant, first_payment, high_velocity, mismatched_purpose, off_platform, shared_wallet. Lowering: trusted_repeat, within_policy, human_preapproved. known_merchant marks the payee known." }
@@ -343,12 +343,12 @@
     {
       "name": "get_quota",
       "title": "SpendGate free scores left today",
-      "description": "Read how many free SpendGate scores remain today for this anonymous caller or SpendGate API key. Does not consume a score, is not billed, and does not use the Toolweather call quota. Optional api_key is a SpendGate key (sg_live_…). Part of the Toolweather suite (SpendGate).",
+      "description": "Read how many free SpendGate scores remain today for this anonymous caller or SpendGate API key. Does not consume a score, is not billed, and does not use the Toolweather call quota. Optional api_key is a SpendGate key (sg_live_…). For a stable SpendGate daily cap through this bundle, call get_api_key first (Toolweather key) or pass a SpendGate sg_live_ key; anonymous callers share IP/session-based caps that can reset on rotating egress. Part of the Toolweather suite (SpendGate).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "api_key": { "type": "string", "description": "Optional sg_live_ key. Omit to read the anonymous quota for this client." }
+          "api_key": { "type": "string", "description": "Optional sg_live_ key. Omit to read the anonymous IP/session cap, which can reset on rotating egress. For a stable cap, pass an sg_live_ key or call get_api_key first (Toolweather key)." }
         }
       },
       "annotations": {

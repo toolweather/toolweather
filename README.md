@@ -127,6 +127,8 @@ key as `X-API-Key` the same way as for the other suite tools.
 SpendGate tools do not consume the Toolweather call quota. They keep SpendGate's own limits: 100 scores/day
 anonymous, 1,000/day with a SpendGate key, then $0.001 per score via x402 (USDC on Base). `get_quota` and
 `spendgate_get_api_key` are not billed. SpendGate's own REST stays at https://spendgate.toolweather.workers.dev.
+For a stable SpendGate daily cap through this bundle, call `get_api_key` first (a Toolweather key) or pass a
+SpendGate `sg_live_` key. Anonymous callers share IP/session-based caps that can reset on rotating egress.
 
 The endpoint answers both 2026-07-28 `server/discover` and legacy `initialize`.
 
@@ -183,13 +185,18 @@ If you run an MCP server, here is exactly what we do:
 The public MCP at `toolweather…/mcp` lists MCP-health, Upstream, and SpendGate tools. Upstream and SpendGate
 tool calls are proxied to those Workers (same Cloudflare account; service binding `UPSTREAM` / `SPENDGATE`,
 HTTPS fallback to each worker's `/mcp`). When `BUNDLE_PROXY_SECRET` is set, the proxy sends `x-tw-bundle-secret`
-and `x-tw-bundle-client` (a hash of the caller, not the raw key or IP). Each product's own Worker, REST API,
+and `x-tw-bundle-client` (a hash of the caller, never the raw key, session id, or IP). Each product's own Worker, REST API,
 and x402 payment endpoints remain unchanged for existing clients.
 
-Toolweather already sends those headers when `BUNDLE_PROXY_SECRET` is set. SpendGate's code is not in this
-repo. A call with an unrecognized secret is still anonymous on SpendGate, so per-client quota only works after
-SpendGate accepts the same secret Upstream does and keys its cap by `x-tw-bundle-client`. Until then, pass an
-`sg_live_…` key as `api_key`, or callers share SpendGate's anonymous bucket for traffic from this Worker.
+`x-tw-bundle-client` is chosen as follows:
+
+- Toolweather free key (`plan === "free_key"`, hex without `anon:`): that key's existing sha256, unchanged.
+- Anonymous with an `Mcp-Session-Id` of 8–128 safe characters: `sha256("tw-mcp-session|" + session)` as 64 hex characters (no `anon:` prefix), so the cap stays on one client when cloud egress IPs rotate.
+- Anonymous with no session header: `anon:` plus the existing daily IP hash, so SpendGate can apply its anonymous limit.
+
+Upstream's free-tier check only accepts `/^[a-f0-9]{16,128}$/i`. When the client id still has an `anon:` prefix, the proxy strips that prefix and forwards the same hash. SpendGate still receives the `anon:` form.
+
+SpendGate's code is not in this repo. A call with an unrecognized secret is still anonymous on SpendGate, so per-client quota only works after SpendGate accepts the same secret Upstream does and keys its cap by `x-tw-bundle-client`. For a stable SpendGate daily cap through this bundle, call `get_api_key` first (Toolweather key) or pass a SpendGate `sg_live_…` key. Anonymous callers share IP/session-based caps that can reset on rotating egress.
 
 ## How it works
 
