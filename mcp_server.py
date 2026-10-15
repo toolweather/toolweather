@@ -14,13 +14,20 @@ def _gate(api_key):
 
 @mcp.tool()
 def is_safe_to_call(server: str, tool: str | None = None, api_key: str | None = None) -> dict:
-    """Check whether an MCP server (registry name or URL), and optionally one of its tools, is safe to call right now.
-    Returns verdict safe/caution/unsafe, live status, latency, last tool change (breaking?), spec readiness, auth info, last_checked."""
+    """Read whether one remote MCP server, and optionally one tool on it, is safe to call right now.
+    Use before adding or calling that server, or after its calls fail. Do not use it to search by capability (suggest_alternatives).
+    server is a registry name or MCP endpoint URL, not a homepage. tool, if set, forces verdict unsafe when that name is missing.
+    api_key is a Toolweather tw_ key; omit only for the smaller anonymous daily cap. Each call counts on that quota.
+    Returns verdict (safe|caution|unsafe), status, latency, last tool change, spec readiness, auth, and last_checked. No output schema."""
     _gate(api_key); return tw.is_safe_to_call(server, tool)
 
 @mcp.tool()
 def suggest_alternatives(query: str, limit: int = 5, api_key: str | None = None) -> dict:
-    """Find working MCP servers with similar tools. query = a server name/URL, or capability text like 'send email'."""
+    """Search the index for healthy MCP servers by capability, or for a replacement for one broken server.
+    Use when is_safe_to_call is unsafe or unknown, or when you lack a capability. Do not use it to judge one server you already chose (is_safe_to_call).
+    query is a capability phrase such as 'send email', or a server name/URL to replace. limit is 1-20 ranked rows (default 5); there is no cursor.
+    Does not call the remote servers. Unsafe rows are dropped. Counts on the same Toolweather quota as is_safe_to_call.
+    Returns query and alternatives[] with server, url, verdict, latency, and matching tools. No output schema."""
     _gate(api_key); return tw.suggest_alternatives(query, min(limit, 20))
 
 if __name__ == "__main__":
