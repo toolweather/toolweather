@@ -1,0 +1,2 @@
+ALTER TABLE watches ADD COLUMN paid INT DEFAULT 0;
+ALTER TABLE watches ADD COLUMN expires TEXT;

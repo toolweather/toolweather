@@ -58,29 +58,36 @@ async function lastBreakingTs(env, name) {
   return (r && r.t) || "";
 }
 const pub = (w) => ({ id: w.id, server: w.server, webhook_url: w.webhook_url, active: !!w.active, disabled_reason: w.disabled_reason || null,
-  created: w.created, last_known: { verdict: w.last_verdict, status: w.last_status }, consecutive_failures: w.fail_count, last_delivery: w.last_delivery_ts || null });
+  created: w.created, plan: w.paid ? "paid" : "free", expires: w.expires || null, last_known: { verdict: w.last_verdict, status: w.last_status }, consecutive_failures: w.fail_count, last_delivery: w.last_delivery_ts || null });
 
-export async function createWatch(env, h, server, webhook_url) {
+export async function freeWatchCount(env, h) {
+  return (await env.DB.prepare("SELECT count(*) c FROM watches WHERE key_hash=? AND active=1 AND coalesce(paid,0)=0").bind(h).first()).c;
+}
+// paid=true: an x402-paid extra watch (30 days). dryRun: validate only (used before asking for payment).
+export async function createWatch(env, h, server, webhook_url, paid = false, dryRun = false) {
   if (!server || !webhook_url) return { code: 400, body: { error: "server and webhook_url are required" } };
   const bad = await checkWebhook(String(webhook_url)); if (bad) return { code: 400, body: { error: bad } };
   const st = await serverState(env, String(server));
   if (!st) return { code: 404, body: { error: "server not in Toolweather index; use a registry name or URL (see /v1/is_safe_to_call)" } };
-  const n = await env.DB.prepare("SELECT count(*) c FROM watches WHERE key_hash=? AND active=1").bind(h).first();
-  if (n.c >= FREE_WATCHES) return { code: 403, body: { error: "watch_limit_reached", limit: FREE_WATCHES,
-    message: `You're watching ${FREE_WATCHES} servers, the free-tier limit. Remove one with DELETE /v1/watches/{id} to watch another. Plans with more watches are on the way; email toolweather@mail.grokbot.com if you'd like a heads-up.` } };
+  const n = { c: await freeWatchCount(env, h) };
+  if (!paid && n.c >= FREE_WATCHES) return { code: 403, body: { error: "watch_limit_reached", limit: FREE_WATCHES,
+    message: `You're watching ${FREE_WATCHES} servers, the free-tier limit. Remove one with DELETE /v1/watches/{id} to watch another. Or add an extra watch for $0.05 per 30 days via x402 (retry with a PAYMENT-SIGNATURE header).` } };
   const dup = await env.DB.prepare("SELECT id FROM watches WHERE key_hash=? AND server=? AND webhook_url=? AND active=1").bind(h, st.name, webhook_url).first();
   if (dup) return { code: 409, body: { error: "already watching this server with this webhook_url", id: dup.id } };
+  if (dryRun) return { code: 200, body: { ok: true } };
+  const expires = paid ? new Date(Date.now() + 30 * 864e5).toISOString() : null;
   const secret = "whsec_" + hex(crypto.getRandomValues(new Uint8Array(24)));
   const w = { id: rid("w"), server: st.name, webhook_url, created: now() };
-  await env.DB.prepare("INSERT INTO watches(id,key_hash,server,webhook_url,secret,created,active,last_verdict,last_status,last_change_ts,fail_count) VALUES(?,?,?,?,?,?,1,?,?,?,0)")
-    .bind(w.id, h, w.server, webhook_url, secret, w.created, st.verdict, st.status, await lastBreakingTs(env, st.name)).run();
+  await env.DB.prepare("INSERT INTO watches(id,key_hash,server,webhook_url,secret,created,active,last_verdict,last_status,last_change_ts,fail_count,paid,expires) VALUES(?,?,?,?,?,?,1,?,?,?,0,?,?)")
+    .bind(w.id, h, w.server, webhook_url, secret, w.created, st.verdict, st.status, await lastBreakingTs(env, st.name), paid ? 1 : 0, expires).run();
   return { code: 201, body: { ...w, active: true, secret, current: { verdict: st.verdict, status: st.status },
     events: ["verdict_changed", "auth_required", "breaking_tool_change"], signature: "X-Toolweather-Signature: t=<unix>,v1=hex(HMAC-SHA256(secret, `${t}.${raw_body}`))",
-    free_tier: { watches_used: n.c + 1, watches_limit: FREE_WATCHES }, note: "Store the secret now; it is not shown again." } };
+    plan: paid ? "paid extra watch (30 days)" : "free watch", expires: expires,
+    free_tier: { watches_used: n.c + (paid ? 0 : 1), watches_limit: FREE_WATCHES }, note: "Store the secret now; it is not shown again." } };
 }
 export async function listWatches(env, h) {
   const { results } = await env.DB.prepare("SELECT * FROM watches WHERE key_hash=? ORDER BY created").bind(h).all();
-  const act = results.filter((w) => w.active).length;
+  const act = results.filter((w) => w.active && !w.paid).length;
   return { code: 200, body: { watches: results.map(pub), free_tier: { watches_used: act, watches_limit: FREE_WATCHES } } };
 }
 export async function deleteWatch(env, h, id) {
@@ -96,7 +103,7 @@ async function sign(secret, t, body) {
   return hex(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(`${t}.${body}`)));
 }
 async function detect(env) {
-  const { results: ws } = await env.DB.prepare("SELECT * FROM watches WHERE active=1").all();
+  const { results: ws } = await env.DB.prepare("SELECT * FROM watches WHERE active=1 AND (expires IS NULL OR expires > ?)").bind(now()).all();
   let made = 0;
   for (const w of ws) {
     const st = await serverState(env, w.server); if (!st) continue;

@@ -3,7 +3,7 @@
   "name": "io.github.toolweather/toolweather",
   "version": "1.2.0",
   "title": "Toolweather",
-  "description": "Toolweather suite: MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations. One MCP endpoint.",
+  "description": "Toolweather suite: MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations. One MCP endpoint. Free daily quota; heavier use pay-per-call via x402.",
   "websiteUrl": "https://toolweather.pages.dev",
   "repository": {
     "url": "https://github.com/toolweather/toolweather",
@@ -62,6 +62,26 @@
       "get_model": "check_model_deprecation",
       "get_changes": "list_recent_api_changes"
     },
-    "io.github.toolweather/when_to_use": "Before adding/calling a third-party MCP server: check_mcp_server_health. Before calling an AI/dev API or after 5xx: check_api_status. Before hard-coding a model id: check_model_deprecation. Every result starts with a one-line summary, verdict, recommended_action, checked_at and freshness."
+    "io.github.toolweather/when_to_use": "Before adding/calling a third-party MCP server: check_mcp_server_health. Before calling an AI/dev API or after 5xx: check_api_status. Before hard-coding a model id: check_model_deprecation. Every result starts with a one-line summary, verdict, recommended_action, checked_at and freshness.",
+    "io.toolweather/pricing": {
+      "free": {
+        "calls_per_day_per_key": 1000,
+        "live_rechecks_per_day": 200,
+        "watches": 3
+      },
+      "x402": {
+        "network": "eip155:8453",
+        "asset": "USDC",
+        "pay_to": "0xb9D9af3Bf4C352fF4e6D3cf480bFc31CB832Ce29",
+        "prices_usd": {
+          "check": 0.002,
+          "live": 0.005,
+          "alternatives": 0.002,
+          "batch": 0.02,
+          "watch_30d": 0.05
+        }
+      },
+      "details": "https://toolweather.toolweather.workers.dev/v1/pricing"
+    }
   }
 }

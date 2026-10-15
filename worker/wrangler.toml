@@ -1,6 +1,7 @@
 name = "toolweather"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 account_id = "9c9d3ecdf6a4b87be13756af2efadcce"
 
@@ -15,3 +16,8 @@ service = "upstream"
 
 [triggers]
 crons = ["*/5 * * * *"]
+
+[vars]
+PAY_TO = "0xb9D9af3Bf4C352fF4e6D3cf480bFc31CB832Ce29"
+X402_NETWORK = "eip155:8453"
+FACILITATOR_URL = "https://facilitator.payai.network"

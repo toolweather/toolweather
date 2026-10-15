@@ -54,3 +54,11 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 ## Optional
 
 - [Probing policy](https://github.com/toolweather/toolweather#probing-policy-read-only): read-only, at most one request per host in flight, opt-out by email.
+
+## Pricing
+- Free: 1,000 calls/day per key (POST /v1/keys, instant), 200 live rechecks/day, 3 change-alert watches.
+- Over the free quota, calls return HTTP 402 with an x402 v2 "exact" requirement (USDC on Base, eip155:8453) instead of a hard block. MCP tools return it in _meta["x402/payment-required"]; retry with params._meta["x402/payment"].
+- Prices: health check $0.002, live recheck $0.005, alternatives $0.002, batch of up to 25 servers $0.02 (POST /v1/batch_check), extra watch $0.05 per 30 days. Never charged for errors.
+- Headers on metered responses: X-Free-Remaining, X-RateLimit-Limit, X-Price-After-Free; body field "quota".
+- Pay-only lanes (no key): /x402/is_safe_to_call?server=, /x402/live_check?server=, /x402/suggest_alternatives?q=, POST /x402/batch_check. Index: https://toolweather.toolweather.workers.dev/.well-known/x402 · https://toolweather.toolweather.workers.dev/v1/pricing
+- Upstream tools in the bundle keep Upstream's own quota and prices.

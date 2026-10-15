@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS page_uniques(day TEXT, vh TEXT, PRIMARY KEY(day, vh))
 CREATE TABLE IF NOT EXISTS key_daily(key_hash TEXT, day TEXT, endpoint TEXT, channel TEXT, calls INT, limited INT, first_ts TEXT, last_ts TEXT, PRIMARY KEY(key_hash, day, endpoint, channel));
 CREATE TABLE IF NOT EXISTS key_servers(key_hash TEXT, day TEXT, server TEXT, n INT, PRIMARY KEY(key_hash, day, server));
 CREATE TABLE IF NOT EXISTS watches(id TEXT PRIMARY KEY, key_hash TEXT, server TEXT, webhook_url TEXT, secret TEXT, created TEXT,
-  active INT DEFAULT 1, disabled_reason TEXT, last_verdict TEXT, last_status TEXT, last_change_ts TEXT, fail_count INT DEFAULT 0, last_delivery_ts TEXT);
+  active INT DEFAULT 1, disabled_reason TEXT, last_verdict TEXT, last_status TEXT, last_change_ts TEXT, fail_count INT DEFAULT 0, last_delivery_ts TEXT, paid INT DEFAULT 0, expires TEXT);
 CREATE INDEX IF NOT EXISTS ix_watches_key ON watches(key_hash);
 CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY, watch_id TEXT, event TEXT, payload TEXT, created TEXT, attempts INT DEFAULT 0,
   next_attempt TEXT, state TEXT, last_http INT, last_error TEXT, delivered TEXT);

@@ -1,7 +1,8 @@
 // Toolweather API + MCP endpoint on Cloudflare Workers (free tier). Verdicts are precomputed at ingest.
 import CARD from "./static/server-card.json";
 import OPENAPI from "./static/openapi.json";
-import { createWatch, listWatches, deleteWatch, runAlerts } from "./watches.js";
+import { createWatch, listWatches, deleteWatch, runAlerts, freeWatchCount, FREE_WATCHES } from "./watches.js";
+import { PRICES, BATCH_MAX, PAY_INFO, payHttp, payMcp, paymentHeader } from "./pay.js";
 const STALE_MS = 3600_000 * 1.5;
 const MODERN = "2026-07-28";
 const J = (o, s = 200, h = {}) => new Response(JSON.stringify(o, null, 2), { status: s, headers: { "content-type": "application/json", "access-control-allow-origin": "*", ...h } });
@@ -11,14 +12,15 @@ async function sha256(s) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
-async function gate(env, key) {
-  if (!key) return { ok: false, code: 401, msg: "missing API key (X-API-Key header)" };
+async function gate(env, key, count = true) {
+  if (!key) return { ok: false, code: 401, msg: "missing API key (X-API-Key header). Get one free and instantly: POST /v1/keys (1,000 calls/day). Or skip the key and pay per call via x402 on /x402/* (see /.well-known/x402)." };
   const h = await sha256(key);
   const k = await env.DB.prepare("SELECT daily_limit FROM api_keys WHERE key_hash=?").bind(h).first();
   if (!k) return { ok: false, code: 401, msg: "invalid API key" };
+  if (!count) return { ok: true, h, limit: k.daily_limit, remaining: null };
   const day = new Date().toISOString().slice(0, 10);
-  const u = await env.DB.prepare("INSERT INTO usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(h, day).first();
-  if (u.n > k.daily_limit) return { ok: false, code: 429, h, msg: `free daily limit of ${k.daily_limit} reached` };
+  const u = await env.DB.prepare("INSERT INTO usage VALUES(?,?,?) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+excluded.n RETURNING n").bind(h, day, count === true ? 1 : count).first();
+  if (u.n > k.daily_limit) return { ok: false, code: 429, over: true, h, limit: k.daily_limit, remaining: 0, msg: `Free daily quota of ${k.daily_limit} calls used up (resets 00:00 UTC).` };
   return { ok: true, h, limit: k.daily_limit, remaining: k.daily_limit - u.n };
 }
 // ---- self-serve keys: per-IP (salted daily hash, raw IP never stored) and global daily caps ----
@@ -77,7 +79,7 @@ async function liveProbe(url) {
   } finally { clearTimeout(tm); }
 }
 // rep = shaped stored verdict. Returns rep with checked_at/age_seconds and, when applicable, a live result merged in.
-async function freshen(env, ctx, rep, fresh, keyHash) {
+async function freshen(env, ctx, rep, fresh, keyHash, paid) {
   const age = (ts) => Math.max(0, Math.round((Date.now() - Date.parse(ts)) / 1000));
   rep.checked_at = rep.last_checked; rep.age_seconds = rep.last_checked ? age(rep.last_checked) : null; rep.source = "scheduled_probe";
   if (!rep.url || !/^https:/.test(rep.url) || rep.transport === "sse") { rep.live_check = "not_supported"; return rep; }
@@ -87,9 +89,9 @@ async function freshen(env, ctx, rep, fresh, keyHash) {
   const lcAge = lc ? age(lc.ts) : Infinity;
   let src = "live_cache";
   if (!(lc && (lcAge <= MIN_REPROBE_S || (!fresh && lcAge <= FRESH_S)))) {
-    if (keyHash) {
-      const u = await env.DB.prepare("INSERT INTO live_usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(keyHash, today()).first();
-      if (u.n > LIVE_PER_KEY_DAY) { rep.live_check = `skipped: per-key limit of ${LIVE_PER_KEY_DAY} live checks/day reached; showing the newest result we have`; if (!lc) return rep; }
+    if (keyHash || paid) {
+      const u = paid ? { n: 0 } : await env.DB.prepare("INSERT INTO live_usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(keyHash, today()).first();
+      if (u.n > LIVE_PER_KEY_DAY) { rep.live_check = `skipped: free limit of ${LIVE_PER_KEY_DAY} live checks/day reached; showing the newest result we have. For a guaranteed live recheck use GET /x402/live_check?server=... (${PRICES.live} via x402)`; if (!lc) return rep; }
       else { lc = { url: rep.url, ts: new Date().toISOString(), ...(await liveProbe(rep.url)) }; src = "live_probe";
         ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO live_checks VALUES(?,?,?,?,?,?,?)").bind(lc.url, lc.ts, lc.status, lc.http_status ?? null, lc.latency_ms, lc.protocol_version ?? null, lc.error ?? null).run().catch(() => {})); }
     } else return rep;
@@ -133,10 +135,10 @@ async function authedCheck(url, token) {
       tool_count: Array.isArray(tools) ? tools.length : null, tool_names: Array.isArray(tools) ? tools.slice(0, 200).map((x) => x.name) : null, error: Array.isArray(tools) ? null : "tools/list failed" };
   } catch (e) { return { status: "failed", latency_ms: Date.now() - t0, error: e.name === "AbortError" ? `timeout (${LIVE_TIMEOUT_MS / 1000}s)` : String(e.message || e).slice(0, 120) }; }
 }
-async function withAuthedCheck(env, rep, token, keyHash) {
+async function withAuthedCheck(env, rep, token, keyHash, paid) {
   if (!token || !rep.url) return rep;
   if (!/^https:/.test(rep.url) || rep.transport === "sse") { rep.authenticated_check = { status: "not_supported" }; return rep; }
-  const u = await env.DB.prepare("INSERT INTO live_usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(keyHash, today()).first();
+  const u = paid ? { n: 0 } : await env.DB.prepare("INSERT INTO live_usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(keyHash, today()).first();
   if (u.n > LIVE_PER_KEY_DAY) { rep.authenticated_check = { status: "skipped", reason: `per-key limit of ${LIVE_PER_KEY_DAY} live checks/day reached` }; return rep; }
   const c = await authedCheck(rep.url, String(token).slice(0, 4096));
   rep.authenticated_check = { ...c, checked_at: new Date().toISOString(), note: "one-off check with your token; the token was not stored or logged" };
@@ -152,8 +154,8 @@ async function isSafe(env, server, tool, opt = {}) {
   if (!results.length) ({ results } = await env.DB.prepare("SELECT * FROM servers WHERE name LIKE ? LIMIT 5").bind(`%${server}%`).all());
   if (!results.length) return { server, tool: tool || null, verdict: "unknown", reasons: ["server not in Toolweather index"] };
   const reps = results.map((r) => shape(r, tool)).sort((a, b) => ORDER[a.verdict] - ORDER[b.verdict]);
-  let top = opt.ctx ? await freshen(env, opt.ctx, reps[0], !!opt.fresh, opt.keyHash) : reps[0];
-  if (opt.bearer) top = await withAuthedCheck(env, top, opt.bearer, opt.keyHash);
+  let top = opt.ctx ? await freshen(env, opt.ctx, reps[0], !!opt.fresh, opt.keyHash, opt.paidLive) : reps[0];
+  if (opt.bearer && (opt.keyHash || opt.paidLive)) top = await withAuthedCheck(env, top, opt.bearer, opt.keyHash, opt.paidLive);
   return { ...top, other_endpoints: reps.slice(1).map((x) => ({ url: x.url, verdict: x.verdict, status: x.status })) };
 }
 async function alternatives(env, q, limit = 5) {
@@ -178,6 +180,18 @@ async function alternatives(env, q, limit = 5) {
   return { query: q, basis: "capability text", alternatives: out };
 }
 
+async function batchCheck(env, servers) {
+  if (!Array.isArray(servers) || !servers.length) return { error: "servers (array of registry names or URLs) is required" };
+  if (servers.length > BATCH_MAX) return { error: `at most ${BATCH_MAX} servers per batch` };
+  const results = await Promise.all(servers.map(async (s) => decorate(await isSafe(env, String(s).slice(0, 300)))));
+  const n = (v) => results.filter((r) => r.verdict === v).length;
+  return { summary: `${results.length} servers: ${n("safe")} safe, ${n("caution")} caution, ${n("unsafe")} unsafe, ${n("unknown")} unknown (stored verdicts, no live recheck).`, checked_at: new Date().toISOString(), results };
+}
+const quotaInfo = (g, price) => ({ free_limit: g.limit, free_remaining: Math.max(g.remaining ?? 0, 0), resets: "00:00 UTC", price_after_free_usd: price, how_to_pay: "x402 v2 exact, USDC on Base; see /.well-known/x402" });
+const quotaHeaders = (g, price) => ({ "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining ?? 0, 0)), "x-free-remaining": String(Math.max(g.remaining ?? 0, 0)), "x-price-after-free": price + " USDC (x402, Base)" });
+const BATCH_TOOL = { name: "batch_check_mcp_servers", title: "Check up to 25 MCP servers at once", description: `Check up to ${BATCH_MAX} MCP servers in one call (stored verdicts from the last 15-min probe, no live recheck). Use to vet a whole tool list at startup. Each server counts as 1 call against the free daily quota; over quota, ${PRICES.batch} per batch via x402. Example: {"servers":["com.ufcalendar/fight-api","https://mcp.example.com/mcp"]}.`,
+  inputSchema: { type: "object", properties: { servers: { type: "array", items: { type: "string" }, maxItems: BATCH_MAX, description: "Registry names or remote URLs" } }, required: ["servers"] } };
+
 // ---- MCP (streamable HTTP, stateless; answers 2026-07-28 server/discover and legacy initialize) ----
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 const SRV = { type: "string", description: "MCP server registry name (e.g. io.github.owner/name, com.example/server) or its remote URL (https://.../mcp). Partial names are matched.", examples: ["com.ufcalendar/fight-api", "https://mcp.example.com/mcp"] };
@@ -197,17 +211,18 @@ const UP_TOOLS = [
 ];
 const TOOLS = [
   { name: "check_mcp_server_health", title: "Is this MCP server healthy / safe to call right now?",
-    description: "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Alias: is_safe_to_call.",
+    description: "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Free: 1,000 calls/day per key (200 live rechecks); over quota $0.002 per call via x402 (USDC on Base). Alias: is_safe_to_call.",
     inputSchema: { type: "object", properties: { server: SRV, tool: { type: "string", description: "Optional tool name to confirm it still exists on the server, e.g. search" }, fresh: { type: "boolean", description: "Force a live handshake now (otherwise automatic when the stored check is >5 min old)" }, bearer_token: { type: "string", description: "Optional: your own token for this server, for a one-off authenticated initialize + tools/list check. Used once, never stored or logged." } }, required: ["server"] }, annotations: { title: "Is this MCP server healthy?", ...RO } },
   { name: "find_alternative_mcp_servers", title: "Find a working MCP server that does X",
-    description: "Find healthy, currently-working MCP servers by capability (e.g. 'send email', 'web search', 'postgres') or replacements for a broken server (pass its name/URL). Use when check_mcp_server_health says unsafe, or when you need a tool you don't have. Unhealthy servers are excluded. Returns summary first, then ranked servers with verdict, latency and matching tools. Example: {\"query\":\"send email\",\"limit\":5}. Alias: suggest_alternatives.",
+    description: "Find healthy, currently-working MCP servers by capability (e.g. 'send email', 'web search', 'postgres') or replacements for a broken server (pass its name/URL). Use when check_mcp_server_health says unsafe, or when you need a tool you don't have. Unhealthy servers are excluded. Returns summary first, then ranked servers with verdict, latency and matching tools. Example: {\"query\":\"send email\",\"limit\":5}. Free within the daily quota, then $0.002 per call via x402. Alias: suggest_alternatives.",
     inputSchema: { type: "object", properties: { query: { type: "string", description: "Capability text like 'send email', or a server name/URL to replace", examples: ["send email", "web search"] }, limit: { type: "integer", description: "1-20, default 5" } }, required: ["query"] }, annotations: { title: "Find alternative MCP servers", ...RO } },
   { name: "get_api_key", title: "Get a free Toolweather API key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key, email or signup needed; call this first if you have no key. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
     inputSchema: { type: "object", properties: {} }, annotations: { title: "Get free API key", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
-  { name: "watch_server", title: "Alert me when an MCP server breaks", description: "Get an HTTPS webhook when an MCP server goes down, its verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Use instead of polling. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free tier: 3 watches per key. Example: {\"server\":\"com.ufcalendar/fight-api\",\"webhook_url\":\"https://example.com/hook\"}.",
+  { name: "watch_server", title: "Alert me when an MCP server breaks", description: "Get an HTTPS webhook when an MCP server goes down, its verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Use instead of polling. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free: 3 watches per key; each extra watch is $0.05 per 30 days via x402. Example: {\"server\":\"com.ufcalendar/fight-api\",\"webhook_url\":\"https://example.com/hook\"}.",
     inputSchema: { type: "object", properties: { server: SRV, webhook_url: { type: "string", description: "Public https URL that receives POSTed JSON alerts" } }, required: ["server", "webhook_url"] }, annotations: { title: "Watch a server", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
   { name: "list_watches", title: "List my server watches", description: "List this API key's server watches and their webhook delivery health.", inputSchema: { type: "object", properties: {} }, annotations: { title: "List watches", ...RO, openWorldHint: false } },
   { name: "unwatch_server", title: "Stop watching a server", description: "Delete one of your watches by id (from list_watches).", inputSchema: { type: "object", properties: { id: { type: "string", description: "Watch id, e.g. w_abc123" } }, required: ["id"] }, annotations: { title: "Delete watch", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } },
+  { ...BATCH_TOOL, annotations: { title: "Batch health check", ...RO } },
   ...UP_TOOLS,
 ];
 const ALIAS = { is_safe_to_call: "check_mcp_server_health", suggest_alternatives: "find_alternative_mcp_servers", get_status: "check_api_status", get_model: "check_model_deprecation", get_changes: "list_recent_api_changes" };
@@ -242,7 +257,7 @@ function decorate(r) {
     checked_at: r.checked_at || r.last_checked || null, freshness: { age_seconds: age, fresh: age != null && age <= FRESH_S, source: r.source || "scheduled_probe" }, ...r };
 }
 const INFO = { name: "toolweather", title: "Toolweather", version: "0.3.0" };
-const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. No key yet? call get_api_key (free, instant). Every result starts with a one-line summary.";
+const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. No key yet? call get_api_key (free, instant: 1,000 calls/day, 3 watches). Over the free quota, tools return an x402 payment requirement in _meta[\"x402/payment-required\"] (USDC on Base, $0.002 per check); retry with params._meta[\"x402/payment\"]. Every result starts with a one-line summary.";
 async function mcp(req, env, key, ctx) {
   let msg; try { msg = await req.json(); } catch { return J({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   if (Array.isArray(msg)) return J({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batch not supported" } }, 400);
@@ -266,19 +281,39 @@ async function mcp(req, env, key, ctx) {
         track(env, ctx, "get_api_key", "mcp", r.code === 201 ? "ok" : "rate_limited");
         return ok({ isError: r.code !== 201, content: [{ type: "text", text: r.code === 201 ? `Your Toolweather API key (shown once): ${r.body.api_key}\n1,000 calls/day, 3 watches. Send it as the X-API-Key header.` : r.body.message }], structuredContent: r.body });
       }
-      const g = await gate(env, key || params.arguments?.api_key);
+      const isUp = UP_NAMES.has(params.name), pay = params._meta?.["x402/payment"];
+      const units = params.name === "batch_check_mcp_servers" ? Math.min(Math.max((params.arguments?.servers || []).length, 1), BATCH_MAX) : 1;
+      const counts = !isUp && !pay && !["list_watches", "unwatch_server"].includes(params.name);
+      const g = await gate(env, key || params.arguments?.api_key, counts ? units : false);
       track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["check_mcp_server_health", "watch_server"].includes(params.name) ? params.arguments?.server : null);
-      if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
-      if (UP_NAMES.has(params.name)) {
+      const MP = { check_mcp_server_health: (a.fresh === true || a.fresh === "true" || a.bearer_token) ? PRICES.live : PRICES.check, find_alternative_mcp_servers: PRICES.alternatives, batch_check_mcp_servers: PRICES.batch };
+      const runTool = async (paid) => {
+        let r;
+        if (params.name === "check_mcp_server_health") r = decorate(await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: paid ? null : g.h, paidLive: paid, bearer: a.bearer_token }));
+        else if (params.name === "find_alternative_mcp_servers") r = decorate(await alternatives(env, a.query, a.limit));
+        else r = await batchCheck(env, a.servers);
+        if (!paid && g.ok && g.remaining != null) r.quota = quotaInfo(g, MP[params.name]);
+        return { isError: !!r.error, content: [{ type: "text", text: JSON.stringify(r, null, 2) }], structuredContent: r };
+      };
+      if (MP[params.name] && (pay || g.over)) return ok(await payMcp(req, env, params.name, MP[params.name], pay, () => runTool(true), g.msg || "Paid call."));
+      if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
+      if (isUp) {
         const proxied = await proxyUpstream(env, params.name, a, params._meta, g.h);
         return ok(proxied);
       }
+      if (MP[params.name]) return ok(await runTool(false));
       let r;
-      if (params.name === "check_mcp_server_health") r = decorate(await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: g.h, bearer: a.bearer_token }));
-      else if (params.name === "find_alternative_mcp_servers") r = decorate(await alternatives(env, a.query, a.limit));
-      else if (params.name === "watch_server") r = (await createWatch(env, g.h, a.server, a.webhook_url)).body;
+      if (params.name === "watch_server") {
+        if (pay || (await freeWatchCount(env, g.h)) >= FREE_WATCHES) {
+          const pre = await createWatch(env, g.h, a.server, a.webhook_url, true, true);
+          if (pre.code >= 400) return ok({ isError: true, content: [{ type: "text", text: pre.body.error }], structuredContent: pre.body });
+          return ok(await payMcp(req, env, "watch_server", PRICES.watch, pay, async () => { const w = await createWatch(env, g.h, a.server, a.webhook_url, true); return { isError: w.code >= 400, content: [{ type: "text", text: JSON.stringify(w.body, null, 2) }], structuredContent: w.body }; },
+            `You're using all ${FREE_WATCHES} free watches. An extra watch costs ${PRICES.watch} for 30 days.`));
+        }
+        r = (await createWatch(env, g.h, a.server, a.webhook_url)).body;
+      }
       else if (params.name === "list_watches") r = (await listWatches(env, g.h)).body;
       else if (params.name === "unwatch_server") r = (await deleteWatch(env, g.h, a.id)).body;
       else return err(-32602, "unknown tool");
@@ -354,16 +389,46 @@ export default {
     }
     if (p === "/v1/is_safe_to_call" || p === "/v1/suggest_alternatives") {
       const ep = p.slice(4);
-      const g = await gate(env, key);
-      track(env, ctx, ep, "rest", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
+      const paidReq = !!paymentHeader(req), fresh = ["1", "true"].includes(url.searchParams.get("fresh")), bearer = req.headers.get("x-upstream-authorization");
+      const price = ep === "is_safe_to_call" ? (fresh || bearer ? PRICES.live : PRICES.check) : PRICES.alternatives;
+      const g = await gate(env, key, !paidReq);
+      track(env, ctx, ep, "rest", paidReq ? "paid" : g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, ep, "rest", ep === "is_safe_to_call" ? url.searchParams.get("server") : null);
+      const run = async (paid) => {
+        const r = decorate(ep === "is_safe_to_call" ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh, keyHash: paid ? null : g.h, paidLive: paid, bearer })
+          : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit")));
+        const h = paid ? {} : quotaHeaders(g, price); if (!paid) r.quota = quotaInfo(g, price);
+        if (bearer) h["cache-control"] = "no-store";
+        return J(r, r.error ? 400 : 200, h);
+      };
+      if (paidReq || g.over) return payHttp(req, env, price, ep, () => run(true), g.msg);
       if (!g.ok) return J({ error: g.msg }, g.code);
-      const h = { "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining, 0)) };
-      const r = decorate(p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: ["1", "true"].includes(url.searchParams.get("fresh")), keyHash: g.h, bearer: req.headers.get("x-upstream-authorization") })
-        : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit")));
-      if (req.headers.get("x-upstream-authorization")) h["cache-control"] = "no-store";
-      return J(r, r.error ? 400 : 200, h);
+      return run(false);
     }
+    if (p === "/v1/batch_check" || p === "/x402/batch_check") {
+      if (req.method !== "POST") return J({ error: "use POST with JSON {servers:[...]}" }, 405);
+      let b; try { b = await req.clone().json(); } catch { return J({ error: "JSON body required: {servers:[...]}" }, 400); }
+      const lane = p.startsWith("/x402"), paidReq = lane || !!paymentHeader(req);
+      const units = Math.min(Math.max(Array.isArray(b.servers) ? b.servers.length : 1, 1), BATCH_MAX);
+      const g = lane ? { ok: true } : await gate(env, key, paidReq ? false : units);
+      track(env, ctx, "batch_check", "rest", paidReq ? "paid" : g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
+      const run = async (paid) => { const r = await batchCheck(env, b.servers); if (!paid) r.quota = quotaInfo(g, PRICES.batch); return J(r, r.error ? 400 : 200, paid ? {} : quotaHeaders(g, PRICES.batch)); };
+      if (paidReq || g.over) return payHttp(req, env, PRICES.batch, `batch health check of up to ${BATCH_MAX} MCP servers`, () => run(true), g.msg);
+      if (!g.ok) return J({ error: g.msg }, g.code);
+      return run(false);
+    }
+    // always-paid lanes (no key, no quota), for x402 directories and agents that prefer to just pay
+    if (p === "/x402/is_safe_to_call" || p === "/x402/live_check" || p === "/x402/suggest_alternatives") {
+      const live = p === "/x402/live_check", alt = p.endsWith("alternatives");
+      const price = live ? PRICES.live : alt ? PRICES.alternatives : PRICES.check;
+      track(env, ctx, p.slice(1), "x402", paymentHeader(req) ? "paid" : "challenge");
+      return payHttp(req, env, price, live ? "forced live recheck of one MCP server" : alt ? "find healthy alternative MCP servers" : "health verdict for one MCP server", async () => {
+        const r = decorate(alt ? await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit")) : await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: live, paidLive: true, bearer: req.headers.get("x-upstream-authorization") }));
+        return J(r, r.error ? 400 : 200);
+      }, "Paid lane.");
+    }
+    if (p === "/.well-known/x402") return J({ version: 1, resources: ["/x402/is_safe_to_call?server={server}", "/x402/live_check?server={server}", "/x402/suggest_alternatives?q={q}", "/x402/batch_check"].map((x) => url.origin + x), pricing: PAY_INFO(env) }, 200, { "cache-control": "max-age=3600" });
+    if (p === "/v1/pricing") return J({ free: { calls_per_day_per_key: 1000, live_rechecks_per_day: LIVE_PER_KEY_DAY, watches: FREE_WATCHES, key: "POST /v1/keys (instant, no signup)" }, ...PAY_INFO(env), notes: ["You are never charged for errors.", "Upstream tools in this bundle keep Upstream's own free quota and prices."] }, 200, { "cache-control": "max-age=3600" });
     if (p === "/v1/accuracy") {
       const { results } = await env.DB.prepare("SELECT * FROM accuracy_daily ORDER BY day DESC, verdict LIMIT 300").all();
       const days = {}, tot = {};
@@ -391,10 +456,16 @@ export default {
       if (!((id && req.method === "DELETE") || (!id && ["GET", "POST"].includes(req.method)))) return J({ error: "method not allowed" }, 405);
       let body = {};
       if (req.method === "POST") { try { body = await req.json(); } catch { return J({ error: "JSON body required: {server, webhook_url}" }, 400); } }
-      const g = await gate(env, key);
+      const g = await gate(env, key, false);
       track(env, ctx, ep, "rest", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, ep, "rest", ep === "watches.create" ? body.server : null);
       if (!g.ok) return J({ error: g.msg }, g.code);
+      if (ep === "watches.create" && (paymentHeader(req) || (await freeWatchCount(env, g.h)) >= FREE_WATCHES)) {
+        const pre = await createWatch(env, g.h, body.server, body.webhook_url, true, true);
+        if (pre.code >= 400) return J(pre.body, pre.code);
+        return payHttp(req, env, PRICES.watch, "one extra change-alert webhook watch for 30 days", async () => { const w = await createWatch(env, g.h, body.server, body.webhook_url, true); return J(w.body, w.code); },
+          `You're using all ${FREE_WATCHES} free watches.`);
+      }
       const r = id ? await deleteWatch(env, g.h, id) : req.method === "POST" ? await createWatch(env, g.h, body.server, body.webhook_url) : await listWatches(env, g.h);
       if (r.body.error === "watch_limit_reached") track(env, ctx, "watches.limit_hit", "rest", "limited");
       return J(r.body, r.code);
@@ -408,7 +479,7 @@ export default {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + rw}" height="20" role="img" aria-label="toolweather: ${txt}"><rect width="${lw}" height="20" rx="3" fill="#4b5563"/><rect x="${lw}" width="${rw}" height="20" rx="3" fill="${col}"/><rect x="${lw - 3}" width="6" height="20" fill="${col}"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="8" y="14">toolweather</text><text x="${lw + 6}" y="14">${txt}</text></g></svg>`;
       return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=300" } });
     }
-    if (p === "/") return J({ name: "Toolweather", suite: ["mcp_health", "upstream_api_status"], what: "One MCP for MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations.", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", mcp_tools: TOOLS.map((t) => t.name), upstream_api: UP_URL, endpoints: ["/v1/keys", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
+    if (p === "/") return J({ name: "Toolweather", suite: ["mcp_health", "upstream_api_status"], what: "One MCP for MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations.", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", mcp_tools: TOOLS.map((t) => t.name), upstream_api: UP_URL, pricing: "/v1/pricing", x402: "/.well-known/x402", endpoints: ["/v1/keys", "/v1/pricing", "/v1/batch_check", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
   async scheduled(ev, env, ctx) {
