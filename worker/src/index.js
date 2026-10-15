@@ -52,13 +52,66 @@ function shape(r, tool) {
     spec_readiness: { readiness: r.readiness, supports_2026_07_28: r.supports_2026_07_28 == null ? null : !!r.supports_2026_07_28, legacy_versions: parse(r.legacy_versions) },
     auth: parse(r.auth), tool_count: r.tool_count, last_tool_change: lc && (!tool || lc.changes.length) ? lc : null, last_checked: r.last_checked };
 }
-async function isSafe(env, server, tool) {
+
+// ---- fresher verdicts: inline read-only handshake (initialize only) when the stored check is >5 min old or fresh=true ----
+const FRESH_S = 300, MIN_REPROBE_S = 60, LIVE_TIMEOUT_MS = 4000, LIVE_PER_KEY_DAY = 200;
+const UA = "toolweather-live-check/0.1 (read-only; initialize only)";
+async function liveProbe(url) {
+  const t0 = Date.now(), ac = new AbortController(), tm = setTimeout(() => ac.abort(), LIVE_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { method: "POST", signal: ac.signal, redirect: "follow",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "user-agent": UA },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "toolweather-live", version: "0.1" } } }) });
+    const lat = Date.now() - t0;
+    if (r.status === 401 || r.status === 403) { r.body?.cancel(); return { status: "auth_required", http_status: r.status, latency_ms: lat, error: "HTTP " + r.status }; }
+    if (!r.ok) { r.body?.cancel(); return { status: "failed", http_status: r.status, latency_ms: lat, error: "HTTP " + r.status }; }
+    let txt = "";
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    while (txt.length < 16384) { const { value, done } = await rd.read(); if (done) break; txt += dec.decode(value, { stream: true }); if (/"result"\s*:|"error"\s*:/.test(txt) && /\}\s*(\n|$)/.test(txt)) break; }
+    rd.cancel().catch(() => {});
+    const m = txt.match(/"protocolVersion"\s*:\s*"([^"]+)"/);
+    if (/"result"\s*:/.test(txt)) return { status: "ok", http_status: r.status, latency_ms: Date.now() - t0, protocol_version: m ? m[1] : null };
+    return { status: "failed", http_status: r.status, latency_ms: Date.now() - t0, error: "no initialize result" };
+  } catch (e) {
+    return { status: "failed", http_status: null, latency_ms: Date.now() - t0, error: e.name === "AbortError" ? `timeout (${LIVE_TIMEOUT_MS / 1000}s)` : String(e.message || e).slice(0, 120) };
+  } finally { clearTimeout(tm); }
+}
+// rep = shaped stored verdict. Returns rep with checked_at/age_seconds and, when applicable, a live result merged in.
+async function freshen(env, ctx, rep, fresh, keyHash) {
+  const age = (ts) => Math.max(0, Math.round((Date.now() - Date.parse(ts)) / 1000));
+  rep.checked_at = rep.last_checked; rep.age_seconds = rep.last_checked ? age(rep.last_checked) : null; rep.source = "scheduled_probe";
+  if (!rep.url || !/^https:/.test(rep.url) || rep.transport === "sse") { rep.live_check = "not_supported"; return rep; }
+  const needed = fresh || rep.age_seconds == null || rep.age_seconds > FRESH_S;
+  if (!needed) return rep;
+  let lc = await env.DB.prepare("SELECT * FROM live_checks WHERE url=?").bind(rep.url).first();
+  const lcAge = lc ? age(lc.ts) : Infinity;
+  let src = "live_cache";
+  if (!(lc && (lcAge <= MIN_REPROBE_S || (!fresh && lcAge <= FRESH_S)))) {
+    if (keyHash) {
+      const u = await env.DB.prepare("INSERT INTO live_usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(keyHash, today()).first();
+      if (u.n > LIVE_PER_KEY_DAY) { rep.live_check = `skipped: per-key limit of ${LIVE_PER_KEY_DAY} live checks/day reached; showing the newest result we have`; if (!lc) return rep; }
+      else { lc = { url: rep.url, ts: new Date().toISOString(), ...(await liveProbe(rep.url)) }; src = "live_probe";
+        ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO live_checks VALUES(?,?,?,?,?,?,?)").bind(lc.url, lc.ts, lc.status, lc.http_status ?? null, lc.latency_ms, lc.protocol_version ?? null, lc.error ?? null).run().catch(() => {})); }
+    } else return rep;
+  }
+  if (!lc || age(lc.ts) >= rep.age_seconds) return rep;
+  rep.source = src; rep.checked_at = lc.ts; rep.age_seconds = age(lc.ts);
+  rep.live = { status: lc.status, http_status: lc.http_status, latency_ms: lc.latency_ms, protocol_version: lc.protocol_version || null, error: lc.error || null, checks: "initialize handshake only" };
+  if (lc.status === "failed") { rep.verdict = "unsafe"; rep.reasons = [`live check failed: ${lc.error}`]; }
+  else if (lc.status === "auth_required" && rep.status !== "auth_required") { rep.verdict = "caution"; rep.reasons = ["live check: server now requires authentication"]; }
+  else if (lc.status === "ok" && rep.status !== "ok") { rep.verdict = "caution"; rep.reasons = ["live handshake OK (was " + rep.status + " at last full check); tool list not re-verified yet"]; }
+  else if (lc.status === "ok" && rep.verdict === "caution" && rep.reasons.join().includes("older than")) { rep.verdict = "safe"; rep.reasons = ["live handshake OK; tool list from last full check"]; }
+  rep.status = lc.status;
+  return rep;
+}
+async function isSafe(env, server, tool, opt = {}) {
   if (!server) return { error: "server is required" };
   let { results } = await env.DB.prepare("SELECT * FROM servers WHERE name=? OR url=? LIMIT 10").bind(server, server).all();
   if (!results.length) ({ results } = await env.DB.prepare("SELECT * FROM servers WHERE name LIKE ? LIMIT 5").bind(`%${server}%`).all());
   if (!results.length) return { server, tool: tool || null, verdict: "unknown", reasons: ["server not in Toolweather index"] };
   const reps = results.map((r) => shape(r, tool)).sort((a, b) => ORDER[a.verdict] - ORDER[b.verdict]);
-  return { ...reps[0], other_endpoints: reps.slice(1).map((x) => ({ url: x.url, verdict: x.verdict, status: x.status })) };
+  const top = opt.ctx ? await freshen(env, opt.ctx, reps[0], !!opt.fresh, opt.keyHash) : reps[0];
+  return { ...top, other_endpoints: reps.slice(1).map((x) => ({ url: x.url, verdict: x.verdict, status: x.status })) };
 }
 async function alternatives(env, q, limit = 5) {
   if (!q) return { error: "q is required" };
@@ -84,8 +137,8 @@ async function alternatives(env, q, limit = 5) {
 
 // ---- MCP (streamable HTTP, stateless; answers 2026-07-28 server/discover and legacy initialize) ----
 const TOOLS = [
-  { name: "is_safe_to_call", description: "Check whether an MCP server (registry name or URL), and optionally one of its tools, is safe to call right now. Returns verdict safe/caution/unsafe, live status, latency, last tool change (breaking?), spec readiness, auth info, last_checked.",
-    inputSchema: { type: "object", properties: { server: { type: "string" }, tool: { type: "string" } }, required: ["server"] } },
+  { name: "is_safe_to_call", description: "Check whether an MCP server (registry name or URL), and optionally one of its tools, is safe to call right now. Returns verdict safe/caution/unsafe, live status, latency, last tool change (breaking?), spec readiness, auth info, checked_at and age_seconds. Results older than 5 minutes are re-verified with a live handshake.",
+    inputSchema: { type: "object", properties: { server: { type: "string" }, tool: { type: "string" }, fresh: { type: "boolean", description: "force a live handshake now (otherwise automatic when the stored check is >5 min old)" } }, required: ["server"] } },
   { name: "suggest_alternatives", description: "Find working MCP servers with similar tools. query = a server name/URL, or capability text like 'send email'.",
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
   { name: "get_api_key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key or email needed. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
@@ -124,7 +177,7 @@ async function mcp(req, env, key, ctx) {
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
       let r;
-      if (params.name === "is_safe_to_call") r = await isSafe(env, a.server, a.tool);
+      if (params.name === "is_safe_to_call") r = await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: g.h });
       else if (params.name === "suggest_alternatives") r = await alternatives(env, a.query, a.limit);
       else if (params.name === "watch_server") r = (await createWatch(env, g.h, a.server, a.webhook_url)).body;
       else if (params.name === "list_watches") r = (await listWatches(env, g.h)).body;
@@ -188,7 +241,7 @@ export default {
       trackKey(env, ctx, g, ep, "rest", ep === "is_safe_to_call" ? url.searchParams.get("server") : null);
       if (!g.ok) return J({ error: g.msg }, g.code);
       const h = { "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining, 0)) };
-      const r = p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"))
+      const r = p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: ["1", "true"].includes(url.searchParams.get("fresh")), keyHash: g.h })
         : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit"));
       return J(r, r.error ? 400 : 200, h);
     }

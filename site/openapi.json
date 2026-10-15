@@ -131,6 +131,52 @@
             "items": {
               "type": "object"
             }
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the data behind this verdict was checked (live handshake or scheduled probe)"
+          },
+          "age_seconds": {
+            "type": "integer",
+            "description": "Seconds since checked_at"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "scheduled_probe",
+              "live_probe",
+              "live_cache"
+            ]
+          },
+          "live": {
+            "type": "object",
+            "nullable": true,
+            "description": "Result of the inline initialize handshake, when one was used",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "http_status": {
+                "type": "integer",
+                "nullable": true
+              },
+              "latency_ms": {
+                "type": "number"
+              },
+              "protocol_version": {
+                "type": "string",
+                "nullable": true
+              },
+              "error": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "live_check": {
+            "type": "string",
+            "description": "Present when a live check was not possible (e.g. SSE transport, per-key limit)"
           }
         },
         "required": [
@@ -264,6 +310,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "fresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Force a live read-only handshake now. Without it, a live handshake runs automatically when the stored check is older than 5 minutes. Live results are cached ~1-5 min; 200 live checks per key per day."
           }
         ],
         "responses": {

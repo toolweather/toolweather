@@ -21,3 +21,5 @@ CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY, watch_id TEXT, event 
 CREATE INDEX IF NOT EXISTS ix_deliv_pending ON deliveries(state, next_attempt);
 CREATE TABLE IF NOT EXISTS key_signups(day TEXT, ih TEXT, n INT, PRIMARY KEY(day, ih));
 CREATE TABLE IF NOT EXISTS keys_created(day TEXT, source TEXT, outcome TEXT, n INT, PRIMARY KEY(day, source, outcome));
+CREATE TABLE IF NOT EXISTS live_checks(url TEXT PRIMARY KEY, ts TEXT, status TEXT, http_status INT, latency_ms REAL, protocol_version TEXT, error TEXT);
+CREATE TABLE IF NOT EXISTS live_usage(key_hash TEXT, day TEXT, n INT, PRIMARY KEY(key_hash, day));

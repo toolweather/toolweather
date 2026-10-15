@@ -78,7 +78,9 @@ curl -H "X-API-Key: $TW_KEY" "https://toolweather.toolweather.workers.dev/v1/sug
 
 `is_safe_to_call` returns `verdict` (`safe` / `caution` / `unsafe` / `unknown`), reasons, live status
 (`ok` / `auth_required` / `failed`), latency, protocol version, spec readiness, auth/OAuth discovery info,
-the last tool change (and whether it was breaking), and `last_checked`.
+the last tool change (and whether it was breaking), `last_checked`, plus `checked_at` and `age_seconds`.
+
+**Fresh results:** if the stored check is older than 5 minutes, or you pass `fresh=true`, Toolweather runs a quick read-only `initialize` handshake against the server right then (4 s timeout) and returns that result (`source: live_probe`, `live: {...}`). Live results are cached briefly (a server is re-probed at most once a minute) and each key gets 200 live checks a day; after that you get the newest cached result.
 
 Free tier: 1,000 calls per key per day.
 
