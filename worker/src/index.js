@@ -15,8 +15,8 @@ async function gate(env, key) {
   if (!k) return { ok: false, code: 401, msg: "invalid API key" };
   const day = new Date().toISOString().slice(0, 10);
   const u = await env.DB.prepare("INSERT INTO usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(h, day).first();
-  if (u.n > k.daily_limit) return { ok: false, code: 429, msg: `free daily limit of ${k.daily_limit} reached` };
-  return { ok: true, limit: k.daily_limit, remaining: k.daily_limit - u.n };
+  if (u.n > k.daily_limit) return { ok: false, code: 429, h, msg: `free daily limit of ${k.daily_limit} reached` };
+  return { ok: true, h, limit: k.daily_limit, remaining: k.daily_limit - u.n };
 }
 const ORDER = { safe: 0, caution: 1, unsafe: 2 };
 function shape(r, tool) {
@@ -88,6 +88,7 @@ async function mcp(req, env, key, ctx) {
     case "tools/call": {
       const g = await gate(env, key || params.arguments?.api_key);
       track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
+      trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", params.name === "is_safe_to_call" ? params.arguments?.server : null);
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
       let r;
@@ -104,6 +105,16 @@ const today = () => new Date().toISOString().slice(0, 10);
 function track(env, ctx, endpoint, channel, outcome) {
   ctx.waitUntil(env.DB.prepare("INSERT INTO api_daily VALUES(?,?,?,?,1) ON CONFLICT(day,endpoint,channel,outcome) DO UPDATE SET calls=calls+1")
     .bind(today(), endpoint, channel, outcome).run().catch(() => {}));
+}
+// Per-key behaviour (hashed key only, no IPs): calls per day/endpoint/channel, cap hits, servers checked.
+function trackKey(env, ctx, g, endpoint, channel, server) {
+  if (!g.h) return;
+  const day = today(), now = new Date().toISOString(), lim = g.code === 429 ? 1 : 0;
+  const st = [env.DB.prepare(`INSERT INTO key_daily VALUES(?,?,?,?,1,?,?,?) ON CONFLICT(key_hash,day,endpoint,channel)
+      DO UPDATE SET calls=calls+1, limited=limited+excluded.limited, last_ts=excluded.last_ts`).bind(g.h, day, endpoint, channel, lim, now, now)];
+  if (server && g.ok) st.push(env.DB.prepare("INSERT INTO key_servers VALUES(?,?,?,1) ON CONFLICT(key_hash,day,server) DO UPDATE SET n=n+1")
+      .bind(g.h, day, String(server).slice(0, 200)));
+  ctx.waitUntil(env.DB.batch(st).catch(() => {}));
 }
 async function hit(req, env, ctx, url) {
   // Cookie-less page view counter. Unique visitors = sha256(daily salt + IP + UA); raw IP/UA never stored, salt rotates daily.
@@ -135,6 +146,7 @@ export default {
       const ep = p.slice(4);
       const g = await gate(env, key);
       track(env, ctx, ep, "rest", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
+      trackKey(env, ctx, g, ep, "rest", ep === "is_safe_to_call" ? url.searchParams.get("server") : null);
       if (!g.ok) return J({ error: g.msg }, g.code);
       const h = { "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining, 0)) };
       const r = p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"))

@@ -11,3 +11,5 @@ CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS api_daily(day TEXT, endpoint TEXT, channel TEXT, outcome TEXT, calls INT, PRIMARY KEY(day, endpoint, channel, outcome));
 CREATE TABLE IF NOT EXISTS page_daily(day TEXT, path TEXT, ref TEXT, views INT, PRIMARY KEY(day, path, ref));
 CREATE TABLE IF NOT EXISTS page_uniques(day TEXT, vh TEXT, PRIMARY KEY(day, vh));
+CREATE TABLE IF NOT EXISTS key_daily(key_hash TEXT, day TEXT, endpoint TEXT, channel TEXT, calls INT, limited INT, first_ts TEXT, last_ts TEXT, PRIMARY KEY(key_hash, day, endpoint, channel));
+CREATE TABLE IF NOT EXISTS key_servers(key_hash TEXT, day TEXT, server TEXT, n INT, PRIMARY KEY(key_hash, day, server));
