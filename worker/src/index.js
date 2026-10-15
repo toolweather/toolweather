@@ -1,6 +1,7 @@
 // Toolweather API + MCP endpoint on Cloudflare Workers (free tier). Verdicts are precomputed at ingest.
 import CARD from "./static/server-card.json";
 import OPENAPI from "./static/openapi.json";
+import { createWatch, listWatches, deleteWatch, runAlerts } from "./watches.js";
 const STALE_MS = 3600_000 * 1.5;
 const MODERN = "2026-07-28";
 const J = (o, s = 200, h = {}) => new Response(JSON.stringify(o, null, 2), { status: s, headers: { "content-type": "application/json", "access-control-allow-origin": "*", ...h } });
@@ -69,6 +70,10 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { server: { type: "string" }, tool: { type: "string" } }, required: ["server"] } },
   { name: "suggest_alternatives", description: "Find working MCP servers with similar tools. query = a server name/URL, or capability text like 'send email'.",
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
+  { name: "watch_server", description: "Get an HTTPS webhook when a server's verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free tier: 3 watches per key.",
+    inputSchema: { type: "object", properties: { server: { type: "string", description: "registry name or URL" }, webhook_url: { type: "string", description: "public https URL" } }, required: ["server", "webhook_url"] } },
+  { name: "list_watches", description: "List this API key's watches and their delivery health.", inputSchema: { type: "object", properties: {} } },
+  { name: "unwatch_server", description: "Delete a watch by id.", inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
 ];
 const INFO = { name: "toolweather", version: "0.1.0" };
 async function mcp(req, env, key, ctx) {
@@ -90,13 +95,17 @@ async function mcp(req, env, key, ctx) {
     case "tools/call": {
       const g = await gate(env, key || params.arguments?.api_key);
       track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
-      trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", params.name === "is_safe_to_call" ? params.arguments?.server : null);
+      trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["is_safe_to_call", "watch_server"].includes(params.name) ? params.arguments?.server : null);
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
       let r;
       if (params.name === "is_safe_to_call") r = await isSafe(env, a.server, a.tool);
       else if (params.name === "suggest_alternatives") r = await alternatives(env, a.query, a.limit);
+      else if (params.name === "watch_server") r = (await createWatch(env, g.h, a.server, a.webhook_url)).body;
+      else if (params.name === "list_watches") r = (await listWatches(env, g.h)).body;
+      else if (params.name === "unwatch_server") r = (await deleteWatch(env, g.h, a.id)).body;
       else return err(-32602, "unknown tool");
+      if (r.error && params.name.includes("watch")) return ok({ isError: r.error !== "watch_limit_reached", content: [{ type: "text", text: r.message || r.error }], structuredContent: r });
       return ok({ content: [{ type: "text", text: JSON.stringify(r, null, 2) }], structuredContent: r });
     }
     default: return err(-32601, "method not found");
@@ -134,7 +143,7 @@ export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), p = url.pathname;
     const key = req.headers.get("x-api-key") || (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "") || url.searchParams.get("key");
-    if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS" } });
+    if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,DELETE,OPTIONS" } });
     if (p === "/health") {
       const m = await env.DB.prepare("SELECT v FROM meta WHERE k='last_ingest'").first();
       return J({ ok: true, last_ingest: m && m.v });
@@ -157,6 +166,20 @@ export default {
         : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit"));
       return J(r, r.error ? 400 : 200, h);
     }
+    if (p === "/v1/watches" || p.startsWith("/v1/watches/")) {
+      const id = p.length > 12 ? decodeURIComponent(p.slice(12)) : null;
+      const ep = id ? "watches.delete" : req.method === "POST" ? "watches.create" : "watches.list";
+      if (!((id && req.method === "DELETE") || (!id && ["GET", "POST"].includes(req.method)))) return J({ error: "method not allowed" }, 405);
+      let body = {};
+      if (req.method === "POST") { try { body = await req.json(); } catch { return J({ error: "JSON body required: {server, webhook_url}" }, 400); } }
+      const g = await gate(env, key);
+      track(env, ctx, ep, "rest", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
+      trackKey(env, ctx, g, ep, "rest", ep === "watches.create" ? body.server : null);
+      if (!g.ok) return J({ error: g.msg }, g.code);
+      const r = id ? await deleteWatch(env, g.h, id) : req.method === "POST" ? await createWatch(env, g.h, body.server, body.webhook_url) : await listWatches(env, g.h);
+      if (r.body.error === "watch_limit_reached") track(env, ctx, "watches.limit_hit", "rest", "limited");
+      return J(r.body, r.code);
+    }
     if (p.startsWith("/badge/")) {
       const name = decodeURIComponent(p.slice(7).replace(/\.svg$/, ""));
       const r = await env.DB.prepare("SELECT verdict, status, latency_ms FROM servers WHERE name=? OR url=? ORDER BY CASE verdict WHEN 'safe' THEN 0 WHEN 'caution' THEN 1 ELSE 2 END LIMIT 1").bind(name, name).first();
@@ -166,7 +189,8 @@ export default {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + rw}" height="20" role="img" aria-label="toolweather: ${txt}"><rect width="${lw}" height="20" rx="3" fill="#4b5563"/><rect x="${lw}" width="${rw}" height="20" rx="3" fill="${col}"/><rect x="${lw - 3}" width="6" height="20" fill="${col}"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="8" y="14">toolweather</text><text x="${lw + 6}" y="14">${txt}</text></g></svg>`;
       return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=300" } });
     }
-    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", endpoints: ["/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/mcp", "/health"] });
+    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", endpoints: ["/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
+  async scheduled(ev, env, ctx) { ctx.waitUntil(runAlerts(env)); },
 };

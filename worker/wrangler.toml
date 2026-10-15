@@ -8,3 +8,6 @@ account_id = "9c9d3ecdf6a4b87be13756af2efadcce"
 binding = "DB"
 database_name = "toolweather"
 database_id = "f3fca32f-f22b-4227-a860-7bccf8295a76"
+
+[triggers]
+crons = ["*/5 * * * *"]

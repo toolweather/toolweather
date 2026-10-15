@@ -3,7 +3,7 @@
   "info": {
     "title": "Toolweather API",
     "version": "1.0.0",
-    "description": "Is this MCP server/tool safe to call right now? Live health verdicts for ~2,000 public MCP servers from the official registry, checked every 15 minutes, plus working alternatives. Free tier: 1,000 calls/day per key; email toolweather@mail.grokbot.com for a key.",
+    "description": "Is this MCP server/tool safe to call right now? Live health verdicts for ~2,000 public MCP servers from the official registry, checked every 15 minutes, plus working alternatives. Free tier: 1,000 calls/day per key; email toolweather@mail.grokbot.com for a key. Change alerts: watch up to 3 servers per free key and receive signed HTTPS webhooks.",
     "contact": {
       "email": "toolweather@mail.grokbot.com",
       "url": "https://toolweather.pages.dev"
@@ -142,6 +142,99 @@
         "type": "object",
         "properties": {
           "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Watch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "webhook_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "disabled_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_known": {
+            "type": "object"
+          },
+          "consecutive_failures": {
+            "type": "integer"
+          },
+          "last_delivery": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "WebhookEvent": {
+        "type": "object",
+        "description": "POSTed to webhook_url. Verify X-Toolweather-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, t + '.' + raw_body)>. Headers also include X-Toolweather-Event and X-Toolweather-Delivery. Respond 2xx within 10 s; failures retry after 1, 5, 30, 120 and 360 minutes; a watch is disabled after 3 failed deliveries.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "verdict_changed",
+              "auth_required",
+              "breaking_tool_change"
+            ]
+          },
+          "watch_id": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "previous": {
+            "type": "object"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "last_checked": {
             "type": "string"
           }
         }
@@ -436,6 +529,204 @@
               "image/svg+xml": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/watches": {
+      "post": {
+        "operationId": "watch_server",
+        "summary": "Watch a server; get an HTTPS webhook on verdict change, new auth requirement, or breaking tool change",
+        "security": [
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "server",
+                  "webhook_url"
+                ],
+                "properties": {
+                  "server": {
+                    "type": "string",
+                    "description": "registry name or URL"
+                  },
+                  "webhook_url": {
+                    "type": "string",
+                    "description": "public https URL (private/loopback addresses rejected)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created. Includes the per-watch `secret` (shown once).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Watch"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "secret": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or webhook_url",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Free-tier limit (3 watches per key) reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server not indexed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "callbacks": {
+          "change": {
+            "{$request.body#/webhook_url}": {
+              "post": {
+                "requestBody": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/WebhookEvent"
+                      }
+                    }
+                  }
+                },
+                "responses": {
+                  "200": {
+                    "description": "Acknowledged"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "list_watches",
+        "summary": "List this key's watches",
+        "security": [
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Watches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "watches": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Watch"
+                      }
+                    },
+                    "free_tier": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/watches/{id}": {
+      "delete": {
+        "operationId": "unwatch_server",
+        "summary": "Delete a watch",
+        "security": [
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

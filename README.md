@@ -82,8 +82,39 @@ Free tier: 1,000 calls per key per day.
 ### MCP
 
 Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server with header `X-API-Key: <key>`.
-Tools: `is_safe_to_call(server, tool?)` and `suggest_alternatives(query, limit?)`. The endpoint answers both
+Tools: `is_safe_to_call(server, tool?)`, `suggest_alternatives(query, limit?)`, and change alerts:
+`watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`. The endpoint answers both
 2026-07-28 `server/discover` and legacy `initialize`.
+
+### Change alerts (webhooks)
+
+Watch a server and get an HTTPS POST when its verdict changes (`safe` / `caution` / `unsafe`), it starts
+requiring auth, or its tool list has a breaking change. Free tier: 3 watches per key.
+
+```bash
+curl -X POST -H "X-API-Key: $TW_KEY" -H "content-type: application/json" \
+  -d '{"server":"com.ufcalendar/fight-api","webhook_url":"https://example.com/hooks/toolweather"}' \
+  https://toolweather.toolweather.workers.dev/v1/watches      # returns id + secret (shown once)
+curl -H "X-API-Key: $TW_KEY" https://toolweather.toolweather.workers.dev/v1/watches
+curl -X DELETE -H "X-API-Key: $TW_KEY" https://toolweather.toolweather.workers.dev/v1/watches/<id>
+```
+
+Event types: `verdict_changed`, `auth_required`, `breaking_tool_change`. Each POST carries
+`X-Toolweather-Event`, `X-Toolweather-Delivery` and `X-Toolweather-Signature: t=<unix>,v1=<hex>` where
+`v1 = HMAC-SHA256(secret, "<t>.<raw body>")`. Verify it (and reject old `t`) before trusting the payload:
+
+```python
+import hmac, hashlib, time
+def verify(secret, header, raw_body):
+    parts = dict(p.split("=", 1) for p in header.split(","))
+    mac = hmac.new(secret.encode(), f"{parts['t']}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(mac, parts["v1"]) and abs(time.time() - int(parts["t"])) < 600
+```
+
+Webhooks must be public `https` URLs; private, loopback and link-local addresses are rejected.
+Reply 2xx within 10 s. Failed deliveries retry after 1, 5, 30, 120 and 360 minutes; after 3 failed
+deliveries in a row the watch is disabled (see `GET /v1/watches`). Changes are detected every 5 minutes
+by a Cloudflare cron trigger, against probes that run every 15 minutes.
 
 ### Badge
 

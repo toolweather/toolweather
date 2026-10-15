@@ -3,7 +3,7 @@
   "name": "io.github.toolweather/toolweather",
   "version": "1.0.0",
   "title": "Toolweather",
-  "description": "Live health checks for MCP servers: is a server/tool safe to call now, plus alternatives.",
+  "description": "Live health checks for MCP servers: is a server/tool safe to call now, alternatives, and webhook change alerts.",
   "websiteUrl": "https://toolweather.pages.dev",
   "repository": {
     "url": "https://github.com/toolweather/toolweather",
@@ -34,6 +34,13 @@
       "openapi": "https://toolweather.toolweather.workers.dev/openapi.json",
       "llms_txt": "https://toolweather.pages.dev/llms.txt",
       "status_page": "https://toolweather.pages.dev"
-    }
+    },
+    "io.github.toolweather/tools": [
+      "is_safe_to_call",
+      "suggest_alternatives",
+      "watch_server",
+      "list_watches",
+      "unwatch_server"
+    ]
   }
 }
