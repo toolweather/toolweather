@@ -12,6 +12,8 @@ Free tier: 1,000 calls per API key per day. Get a key by emailing toolweather@ma
 - [OpenAPI 3.1 spec](https://toolweather.toolweather.workers.dev/openapi.json)
 - [MCP server card](https://toolweather.toolweather.workers.dev/.well-known/mcp)
 
+Note: requests with Python's default `Python-urllib` User-Agent are rejected by Cloudflare's edge (error 1010). Set any descriptive User-Agent header.
+
 ## Docs
 
 - [README and install snippets (Claude Desktop, Cursor, VS Code)](https://github.com/toolweather/toolweather#install)

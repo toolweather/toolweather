@@ -74,7 +74,10 @@ curl -H "X-API-Key: $TW_KEY" "https://toolweather.toolweather.workers.dev/v1/sug
 (`ok` / `auth_required` / `failed`), latency, protocol version, spec readiness, auth/OAuth discovery info,
 the last tool change (and whether it was breaking), and `last_checked`.
 
-Free tier: 1,000 calls per key per day. Email toolweather@mail.grokbot.com for a key.
+Free tier: 1,000 calls per key per day.
+
+> **Python users:** Cloudflare's `*.workers.dev` edge rejects Python's default `Python-urllib/x.y` User-Agent (error 1010). Send any descriptive User-Agent, e.g. `urllib.request.Request(url, headers={"User-Agent": "my-agent/1.0", "X-API-Key": key})`. `requests`, `httpx`, curl and Node work as-is.
+ Email toolweather@mail.grokbot.com for a key.
 
 ### MCP
 
