@@ -42,6 +42,11 @@ jobs:
         uses: actions/cache/restore@v4
         with: { path: registry_cache.json, key: "registry-${{ github.run_id }}", restore-keys: registry- }
       - run: "[ -f registry_cache.json ] && touch -d '7 hours ago' registry_cache.json || true"   # always refresh (incrementally via updated_since)
+      # --limit keeps the top 2,000 of ~28k remotes. mcphealth.ensure_pinned forces
+      # io.github.toolweather/{toolweather,upstream,paycheck,spendgate} into that set;
+      # their metadata score is 7 and their URLs sort past the cutoff. The D1 ingest
+      # below is what turns /badge/<name>.svg from "unknown" into a real status, and
+      # build_site.py writes /servers/io.github.toolweather--<name>/ from the same DB.
       - name: Probe (read-only)
         run: timeout 720 python mcphealth.py probe --limit 2000 --concurrency 64 --timeout 12 --budget 540
       - run: python mcphealth.py prune --days 7
