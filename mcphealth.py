@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """mcp-health: polite read-only prober for remote MCP servers from the official registry.
 Only performs: initialize -> notifications/initialized -> tools/list. Never calls tools."""
-import re, argparse, asyncio, hashlib, json, sqlite3, statistics, time, random, sys
+import re, datetime, argparse, asyncio, hashlib, json, sqlite3, statistics, time, random, sys
 from urllib.parse import urlparse, urljoin
 import httpx
 
@@ -37,27 +37,49 @@ def db(path):
 
 # ---------- registry ----------
 REG_CACHE = "registry_cache.json"
-async def fetch_registry(client, max_pages=3000, cache_s=6 * 3600):
-    import os
-    if os.path.exists(REG_CACHE) and time.time() - os.path.getmtime(REG_CACHE) < cache_s:
-        return json.load(open(REG_CACHE))
+async def _registry_pages(client, extra, max_pages):
     out, cursor = [], None
     for _ in range(max_pages):
-        params = {"limit": 100, "version": "latest"}
+        params = {"limit": 100, "version": "latest", **extra}
         if cursor: params["cursor"] = cursor
-        for attempt in range(4):
+        for attempt in range(6):
             try:
-                r = await client.get(REGISTRY, params=params); r.raise_for_status(); break
+                r = await client.get(REGISTRY, params=params, timeout=30); r.raise_for_status(); break
             except Exception:
-                if attempt == 3:
-                    if os.path.exists(REG_CACHE):   # registry down/slow: keep probing the last known list
-                        print("registry fetch failed; using stale cache", file=sys.stderr); return json.load(open(REG_CACHE))
-                    raise
-                await asyncio.sleep(2 ** attempt * 2)
+                if attempt == 5: raise
+                await asyncio.sleep(min(2 ** attempt * 2, 20))
         j = r.json(); out += j.get("servers", [])
         cursor = j.get("metadata", {}).get("nextCursor")
         if not cursor: break
         await asyncio.sleep(0.1)
+    return out
+
+def _ekey(e): return (e.get("server", {}).get("name"), e.get("server", {}).get("version"))
+def _upd(e): return e.get("_meta", {}).get("io.modelcontextprotocol.registry/official", {}).get("updatedAt") or ""
+
+async def fetch_registry(client, max_pages=3000, cache_s=6 * 3600):
+    """Full registry list, cached. With a cache, only entries updated since the newest cached update are fetched
+    (updated_since) and merged; if the registry is slow or down, the stale cache is used."""
+    import os
+    cached = json.load(open(REG_CACHE)) if os.path.exists(REG_CACHE) else None
+    if cached and time.time() - os.path.getmtime(REG_CACHE) < cache_s: return cached
+    try:
+        if cached:
+            since = max((_upd(e) for e in cached), default="")
+            since = (datetime.datetime.fromisoformat(since.replace("Z", "+00:00")) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ") if since else None
+            new = await _registry_pages(client, {"updated_since": since} if since else {}, max_pages)
+            idx = {_ekey(e): i for i, e in enumerate(cached)}
+            for e in new:
+                if _ekey(e) in idx: cached[idx[_ekey(e)]] = e
+                else: idx[_ekey(e)] = len(cached); cached.append(e)
+            out = cached
+            print(f"registry: incremental since {since}: {len(new)} updated entries", file=sys.stderr)
+        else:
+            out = await _registry_pages(client, {}, max_pages)
+    except Exception as e:
+        if cached:
+            print(f"registry fetch failed ({type(e).__name__}); using stale cache", file=sys.stderr); return cached
+        raise
     json.dump(out, open(REG_CACHE + ".tmp", "w")); os.replace(REG_CACHE + ".tmp", REG_CACHE)
     return out
 
@@ -324,6 +346,7 @@ async def probe_sse(client, url):
         return s.status_code, lat, res["result"].get("protocolVersion"), res["result"].get("serverInfo"), m["result"].get("tools", [])
 
 DEADLINE = None
+START = time.monotonic()   # time budget counts from process start, so a slow registry fetch can't push the run past its timeout
 class HostLimiter:
     """At most 1 concurrent probe per host, min gap between requests to the same host."""
     def __init__(self, gap=2.0): self.locks, self.last, self.gap = {}, {}, gap
@@ -418,8 +441,15 @@ async def run_cycle(dbpath, limit, concurrency, timeout, sample, host_gap, from_
     limits = httpx.Limits(max_connections=concurrency * 2)
     async with httpx.AsyncClient(headers={"User-Agent": UA}, timeout=httpx.Timeout(timeout, connect=8),
                                  follow_redirects=True, limits=limits) as client:
-        entries = await fetch_registry(client)
-        eps = select_remotes(entries)
+        try:
+            entries = await fetch_registry(client)
+            eps = select_remotes(entries)
+        except Exception as e:   # registry down and no cached list: keep probing what we already track
+            entries = []
+            eps = [tuple(r) for r in con.execute("SELECT server_name,version,url,transport,coalesce(priority,0) FROM endpoints "
+                                                 "WHERE last_seen >= ?", (now - 3 * 86400,))]
+            if not eps: raise
+            print(f"registry unavailable ({type(e).__name__}); probing {len(eps)} known endpoints from history", file=sys.stderr)
         print(f"registry entries={len(entries)} remote endpoints={len(eps)}", file=sys.stderr)
         eps.sort(key=lambda e: e[2])
         if sample: random.Random(42).shuffle(eps)   # sample mode keeps v1 ordering (seed 42) for comparability
@@ -437,7 +467,7 @@ async def run_cycle(dbpath, limit, concurrency, timeout, sample, host_gap, from_
         cid = con.execute("INSERT INTO cycles(started,n) VALUES(?,?)", (now, len(eps))).lastrowid; con.commit()
         sem, hl = asyncio.Semaphore(concurrency), HostLimiter(host_gap)
         global DEADLINE
-        DEADLINE = time.monotonic() + budget if budget else None
+        DEADLINE = START + budget if budget else None
         results = await asyncio.gather(*(probe_one(client, sem, hl, e, timeout) for e in eps))
     nchg = nbreak = 0
     skipped = sum(r is None for r in results)

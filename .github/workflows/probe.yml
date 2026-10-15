@@ -41,7 +41,7 @@ jobs:
       - name: Restore registry list (fallback if the registry is slow)
         uses: actions/cache/restore@v4
         with: { path: registry_cache.json, key: "registry-${{ github.run_id }}", restore-keys: registry- }
-      - run: "[ -f registry_cache.json ] && touch -d '7 hours ago' registry_cache.json || true"   # still refetch each run; cache is only the fallback
+      - run: "[ -f registry_cache.json ] && touch -d '7 hours ago' registry_cache.json || true"   # always refresh (incrementally via updated_since)
       - name: Probe (read-only)
         run: timeout 720 python mcphealth.py probe --limit 2000 --concurrency 64 --timeout 12 --budget 540
       - run: python mcphealth.py prune --days 7
