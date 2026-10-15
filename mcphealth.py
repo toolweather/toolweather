@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """mcp-health: polite read-only prober for remote MCP servers from the official registry.
 Only performs: initialize -> notifications/initialized -> tools/list. Never calls tools."""
-import argparse, asyncio, hashlib, json, sqlite3, statistics, time, random, sys
+import re, argparse, asyncio, hashlib, json, sqlite3, statistics, time, random, sys
 from urllib.parse import urlparse, urljoin
 import httpx
 
@@ -49,7 +49,10 @@ async def fetch_registry(client, max_pages=3000, cache_s=6 * 3600):
             try:
                 r = await client.get(REGISTRY, params=params); r.raise_for_status(); break
             except Exception:
-                if attempt == 3: raise
+                if attempt == 3:
+                    if os.path.exists(REG_CACHE):   # registry down/slow: keep probing the last known list
+                        print("registry fetch failed; using stale cache", file=sys.stderr); return json.load(open(REG_CACHE))
+                    raise
                 await asyncio.sleep(2 ** attempt * 2)
         j = r.json(); out += j.get("servers", [])
         cursor = j.get("metadata", {}).get("nextCursor")
@@ -146,12 +149,75 @@ async def probe_modern(client, url):
     si = (res.get("_meta") or {}).get("io.modelcontextprotocol/serverInfo")
     return ("ok", r.status_code, lat, MODERN, si, tools, sup)
 
+_AS_CACHE = {}   # per-cycle cache: authorization-server URL -> asyncio.Task with its check result
+
+def _err(e):
+    n = type(e).__name__
+    if "SSL" in n or "ssl" in str(e).lower() or "certificate" in str(e).lower(): return "tls_error"
+    if "Timeout" in n: return "timeout"
+    if "Connect" in n: return "connect_error"
+    return n
+
+async def _reach(client, method, url, **kw):
+    """Is an OAuth endpoint reachable over TLS? Any HTTP answer below 500 counts (400/401/405 are expected
+    for unauthenticated requests). Never sends credentials and never registers a client."""
+    try:
+        r = await client.request(method, url, timeout=6, follow_redirects=False, **kw)
+        return {"ok": r.status_code < 500, "http_status": r.status_code}
+    except Exception as e:
+        return {"ok": False, "error": _err(e)}
+
+async def _check_as(client, issuer):
+    """RFC 8414 (+ OIDC fallback) metadata for one authorization server, then reachability of its endpoints."""
+    out = {"issuer": issuer, "metadata_found": False}
+    pu = urlparse(issuer); base = f"{pu.scheme}://{pu.netloc}"; path = pu.path.rstrip("/")
+    cands = [base + "/.well-known/oauth-authorization-server" + path, base + "/.well-known/openid-configuration" + path]
+    if path: cands += [issuer.rstrip("/") + "/.well-known/openid-configuration", base + "/.well-known/oauth-authorization-server"]
+    last = None
+    for c in cands:
+        try:
+            r = await client.get(c, timeout=6)
+            if r.status_code == 200:
+                j = r.json()
+                if isinstance(j, dict) and (j.get("token_endpoint") or j.get("authorization_endpoint")):
+                    out.update(metadata_found=True, metadata_url=c, token_endpoint=j.get("token_endpoint"),
+                               authorization_endpoint=j.get("authorization_endpoint"),
+                               registration_endpoint=j.get("registration_endpoint"),
+                               pkce_s256="S256" in (j.get("code_challenge_methods_supported") or []),
+                               cimd=bool(j.get("client_id_metadata_document_supported")))
+                    break
+            last = f"HTTP {r.status_code}"
+        except Exception as e: last = _err(e)
+    if not out["metadata_found"]:
+        out["error"] = last; return out
+    if out["authorization_endpoint"]: out["authorization_endpoint_check"] = await _reach(client, "GET", out["authorization_endpoint"])
+    if out["token_endpoint"]: out["token_endpoint_check"] = await _reach(client, "POST", out["token_endpoint"], data={"grant_type": "authorization_code"})
+    if out["registration_endpoint"]: out["registration_endpoint_check"] = await _reach(client, "GET", out["registration_endpoint"])
+    return out
+
+def auth_state(info):
+    """auth_ok: login flow reachable | auth_broken: OAuth advertised but a step fails | auth_opaque: no OAuth discovery (API key etc.)"""
+    if not info.get("prm_found"):
+        if info.get("resource_metadata_url"): return "auth_broken", "resource metadata URL in WWW-Authenticate does not resolve"
+        return "auth_opaque", "requires credentials; no OAuth discovery advertised (likely API key or custom auth)"
+    a = info.get("as_check")
+    if not info.get("authorization_servers"): return "auth_broken", "protected-resource metadata lists no authorization server"
+    if not a or not a.get("metadata_found"): return "auth_broken", f"authorization server metadata does not resolve ({(a or {}).get('error')})"
+    for k, lbl in (("token_endpoint", "token endpoint"), ("authorization_endpoint", "authorization endpoint")):
+        if not a.get(k): return "auth_broken", f"metadata has no {lbl}"
+        c = a.get(k + "_check") or {}
+        if not c.get("ok"): return "auth_broken", f"{lbl} unreachable ({c.get('error') or 'HTTP %s' % c.get('http_status')})"
+    reg = "open (dynamic client registration)" if a.get("registration_endpoint") and (a.get("registration_endpoint_check") or {}).get("ok") \
+        else ("client ID metadata documents" if a.get("cimd") else "pre-registered clients only")
+    return "auth_ok", f"OAuth login flow reachable (metadata, authorization + token endpoints OK); registration: {reg}"
+
 async def oauth_info(client, url, www):
-    """Record whether an auth-required server advertises OAuth discovery (RFC 9728)."""
+    """Without credentials: RFC 9728 protected-resource metadata -> RFC 8414 auth-server metadata ->
+    authorization/token/registration endpoint reachability (TLS). Result has state auth_ok/auth_broken/auth_opaque."""
     info = {"www_authenticate": (www or "")[:300] or None, "resource_metadata_url": None,
             "prm_found": False, "authorization_servers": None}
     if www:
-        mm = __import__("re").search(r'resource_metadata="?([^",\s]+)', www)
+        mm = re.search(r'resource_metadata="?([^",\s]+)', www)
         if mm: info["resource_metadata_url"] = mm.group(1)
     cands = [info["resource_metadata_url"]] if info["resource_metadata_url"] else []
     pu = urlparse(url); base = f"{pu.scheme}://{pu.netloc}"
@@ -166,6 +232,13 @@ async def oauth_info(client, url, www):
         except Exception: pass
     info["advertises_oauth"] = bool(info["prm_found"] or info["resource_metadata_url"]
                                     or (www and "bearer" in www.lower()))
+    if info["prm_found"] and info["authorization_servers"]:
+        iss = str(info["authorization_servers"][0])
+        if iss not in _AS_CACHE: _AS_CACHE[iss] = asyncio.ensure_future(_check_as(client, iss))
+        try: info["as_check"] = await asyncio.shield(_AS_CACHE[iss])
+        except Exception as e: info["as_check"] = {"issuer": iss, "metadata_found": False, "error": _err(e)}
+    info["state"], info["state_detail"] = auth_state(info)
+    if info["state"] == "auth_ok": info["dcr"] = "dynamic client registration" in info["state_detail"]
     return info
 
 async def probe_streamable(client, url):
@@ -300,8 +373,8 @@ async def probe_one(client, sem, hl, ep, timeout):
                         supports_2026_07_28=int(bool(modern)), legacy_versions=json.dumps(legacy), spec_readiness=readiness,
                         server_info=json.dumps(si), tools_json=js, tools_hash=hsh, tool_count=len(tools), error=None)
         except AuthRequired as e:
-            try: oi = await asyncio.wait_for(oauth_info(client, url, e.www), 15)
-            except Exception: oi = {"advertises_oauth": bool(e.www), "www_authenticate": e.www}
+            try: oi = await asyncio.wait_for(oauth_info(client, url, e.www), 25)
+            except Exception: oi = {"advertises_oauth": bool(e.www), "www_authenticate": e.www, "state": "auth_unknown", "state_detail": "OAuth checks timed out"}
             return dict(status="auth_required", http_status=e.code, error="HTTP %s" % e.code, oauth=json.dumps(oi))
         except httpx.HTTPStatusError as e:
             return dict(status="failed", http_status=e.response.status_code, error="HTTP %d" % e.response.status_code)

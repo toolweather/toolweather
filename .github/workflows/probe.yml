@@ -1,10 +1,26 @@
 name: probe
+# Primary trigger: the Cloudflare Worker cron dispatches this workflow every 15 min (workflow_dispatch),
+# because GitHub's own schedule often starts 20-40 min late. The schedule below is only a backup:
+# scheduled runs exit early if data was ingested in the last 12 minutes.
 on:
   schedule: [{ cron: "*/15 * * * *" }]
   workflow_dispatch: {}
 concurrency: { group: probe, cancel-in-progress: false }
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs: { skip: "${{ steps.g.outputs.skip }}" }
+    steps:
+      - name: Skip backup run if the Worker-dispatched run is on time
+        id: g
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            last=$(curl -s -A toolweather-ci https://toolweather.toolweather.workers.dev/health | python3 -c "import json,sys;print(json.load(sys.stdin).get('last_ingest') or '')" || true)
+            if [ -n "$last" ] && [ $(( $(date +%s) - $(date -d "$last" +%s) )) -lt 720 ]; then echo "fresh ingest at $last; skipping"; echo "skip=1" >> "$GITHUB_OUTPUT"; fi
+          fi
   probe:
+    needs: gate
+    if: needs.gate.outputs.skip != '1'
     runs-on: ubuntu-latest
     timeout-minutes: 14
     env:
@@ -22,6 +38,10 @@ jobs:
           path: mcp_health.db
           key: probe-db-${{ github.run_id }}
           restore-keys: probe-db-
+      - name: Restore registry list (fallback if the registry is slow)
+        uses: actions/cache/restore@v4
+        with: { path: registry_cache.json, key: "registry-${{ github.run_id }}", restore-keys: registry- }
+      - run: "[ -f registry_cache.json ] && touch -d '7 hours ago' registry_cache.json || true"   # still refetch each run; cache is only the fallback
       - name: Probe (read-only)
         run: timeout 720 python mcphealth.py probe --limit 2000 --concurrency 64 --timeout 12 --budget 540
       - run: python mcphealth.py prune --days 7
@@ -30,6 +50,11 @@ jobs:
         with:
           path: mcp_health.db
           key: probe-db-${{ github.run_id }}
+      - name: Save registry list
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with: { path: registry_cache.json, key: "registry-${{ github.run_id }}" }
       - name: Ingest to D1
         run: python scripts/ingest_d1.py
       - name: Build + deploy status page

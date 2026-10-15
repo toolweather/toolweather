@@ -34,7 +34,12 @@ def endpoint_report(c, r, tool=None):
     tools = [t["name"] for t in json.loads(r["tools_json"])] if r["tools_json"] else None
     st = r["status"]
     if st == "failed": verdict = "unsafe"; reasons.append(f"server down/broken: {r['error']}")
-    elif st == "auth_required": verdict = "caution"; reasons.append("requires authentication; health of tools unverified")
+    elif st == "auth_required":
+        oa = json.loads(r["oauth"]) if r["oauth"] else {}
+        state = oa.get("state")
+        if state == "auth_broken": verdict = "unsafe"; reasons.append(f"auth_broken: {oa.get('state_detail')}; new logins will fail")
+        elif state == "auth_ok": verdict = "caution"; reasons.append(f"auth_ok: {oa.get('state_detail')}; tools unverified without credentials")
+        else: verdict = "caution"; reasons.append(f"requires authentication; {oa.get('state_detail') or 'health of tools unverified'}")
     else:
         verdict = "safe"
         if tool and tools is not None and tool not in tools:
@@ -55,7 +60,13 @@ def endpoint_report(c, r, tool=None):
                                "legacy_versions": json.loads(r["legacy_versions"]) if r["legacy_versions"] else None},
             "auth": None if st != "auth_required" else {"advertises_oauth": (oauth or {}).get("advertises_oauth"),
                      "resource_metadata_url": (oauth or {}).get("resource_metadata_url") or (oauth or {}).get("prm_url"),
-                     "authorization_servers": (oauth or {}).get("authorization_servers")},
+                     "authorization_servers": (oauth or {}).get("authorization_servers"),
+                     "state": (oauth or {}).get("state"), "detail": (oauth or {}).get("state_detail"),
+                     "dynamic_client_registration": (oauth or {}).get("dcr"),
+                     "auth_server": {k: v for k, v in ((oauth or {}).get("as_check") or {}).items()
+                                     if k in ("issuer", "metadata_found", "metadata_url", "authorization_endpoint", "token_endpoint",
+                                              "registration_endpoint", "pkce_s256", "cimd", "error", "token_endpoint_check",
+                                              "authorization_endpoint_check", "registration_endpoint_check")} or None},
             "tool_count": r["tool_count"], "last_tool_change": last_change, "last_checked": iso(r["ts"])}
 
 ORDER = {"safe": 0, "caution": 1, "unsafe": 2}

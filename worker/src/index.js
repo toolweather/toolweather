@@ -104,13 +104,56 @@ async function freshen(env, ctx, rep, fresh, keyHash) {
   rep.status = lc.status;
   return rep;
 }
+
+// ---- one-off authenticated check with the caller's own bearer token. The token is used for this request only:
+// never stored, cached, or logged, and the result is not written to live_checks.
+async function rpcPost(url, body, headers, ms) {
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(url, { method: "POST", signal: ac.signal, headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "user-agent": UA, ...headers }, body: JSON.stringify(body) });
+    const txt = r.ok ? (await r.text()).slice(0, 400000) : (r.body?.cancel(), "");
+    return { r, txt };
+  } finally { clearTimeout(tm); }
+}
+const firstJson = (txt, id) => { for (const part of [txt, ...txt.split(/\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5))]) { try { const j = JSON.parse(part); if (j.id === id) return j; } catch {} } return null; };
+async function authedCheck(url, token) {
+  const t0 = Date.now(), auth = { authorization: /^bearer\s/i.test(token) ? token : "Bearer " + token };
+  try {
+    const a = await rpcPost(url, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "toolweather-authed-check", version: "0.1" } } }, auth, LIVE_TIMEOUT_MS);
+    if (a.r.status === 401 || a.r.status === 403) return { status: "token_rejected", http_status: a.r.status, latency_ms: Date.now() - t0 };
+    const init = firstJson(a.txt, 1);
+    if (!a.r.ok || !init?.result) return { status: "failed", http_status: a.r.status, latency_ms: Date.now() - t0, error: a.r.ok ? "no initialize result" : "HTTP " + a.r.status };
+    const h = { ...auth, "mcp-protocol-version": init.result.protocolVersion || "2025-06-18" };
+    const sid = a.r.headers.get("mcp-session-id"); if (sid) h["mcp-session-id"] = sid;
+    await rpcPost(url, { jsonrpc: "2.0", method: "notifications/initialized" }, h, 2000).catch(() => {});
+    const t = await rpcPost(url, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }, h, LIVE_TIMEOUT_MS);
+    const tl = firstJson(t.txt, 2);
+    const tools = tl?.result?.tools;
+    return { status: Array.isArray(tools) ? "ok" : "failed", http_status: t.r.status, latency_ms: Date.now() - t0, protocol_version: init.result.protocolVersion || null,
+      tool_count: Array.isArray(tools) ? tools.length : null, tool_names: Array.isArray(tools) ? tools.slice(0, 200).map((x) => x.name) : null, error: Array.isArray(tools) ? null : "tools/list failed" };
+  } catch (e) { return { status: "failed", latency_ms: Date.now() - t0, error: e.name === "AbortError" ? `timeout (${LIVE_TIMEOUT_MS / 1000}s)` : String(e.message || e).slice(0, 120) }; }
+}
+async function withAuthedCheck(env, rep, token, keyHash) {
+  if (!token || !rep.url) return rep;
+  if (!/^https:/.test(rep.url) || rep.transport === "sse") { rep.authenticated_check = { status: "not_supported" }; return rep; }
+  const u = await env.DB.prepare("INSERT INTO live_usage VALUES(?,?,1) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+1 RETURNING n").bind(keyHash, today()).first();
+  if (u.n > LIVE_PER_KEY_DAY) { rep.authenticated_check = { status: "skipped", reason: `per-key limit of ${LIVE_PER_KEY_DAY} live checks/day reached` }; return rep; }
+  const c = await authedCheck(rep.url, String(token).slice(0, 4096));
+  rep.authenticated_check = { ...c, checked_at: new Date().toISOString(), note: "one-off check with your token; the token was not stored or logged" };
+  if (c.status === "ok") { rep.verdict = rep.verdict === "unsafe" && rep.status === "failed" ? "caution" : rep.tool && c.tool_names && !c.tool_names.includes(rep.tool) ? "unsafe" : "safe";
+    rep.reasons = rep.verdict === "unsafe" ? [`tool '${rep.tool}' not in tool list returned with your token`] : ["authenticated handshake + tools/list OK with your token just now"]; }
+  else if (c.status === "token_rejected") { rep.reasons = [...rep.reasons, "your token was rejected (HTTP " + c.http_status + ")"]; }
+  else { rep.verdict = "unsafe"; rep.reasons = ["authenticated check failed: " + c.error]; }
+  return rep;
+}
 async function isSafe(env, server, tool, opt = {}) {
   if (!server) return { error: "server is required" };
   let { results } = await env.DB.prepare("SELECT * FROM servers WHERE name=? OR url=? LIMIT 10").bind(server, server).all();
   if (!results.length) ({ results } = await env.DB.prepare("SELECT * FROM servers WHERE name LIKE ? LIMIT 5").bind(`%${server}%`).all());
   if (!results.length) return { server, tool: tool || null, verdict: "unknown", reasons: ["server not in Toolweather index"] };
   const reps = results.map((r) => shape(r, tool)).sort((a, b) => ORDER[a.verdict] - ORDER[b.verdict]);
-  const top = opt.ctx ? await freshen(env, opt.ctx, reps[0], !!opt.fresh, opt.keyHash) : reps[0];
+  let top = opt.ctx ? await freshen(env, opt.ctx, reps[0], !!opt.fresh, opt.keyHash) : reps[0];
+  if (opt.bearer) top = await withAuthedCheck(env, top, opt.bearer, opt.keyHash);
   return { ...top, other_endpoints: reps.slice(1).map((x) => ({ url: x.url, verdict: x.verdict, status: x.status })) };
 }
 async function alternatives(env, q, limit = 5) {
@@ -138,7 +181,7 @@ async function alternatives(env, q, limit = 5) {
 // ---- MCP (streamable HTTP, stateless; answers 2026-07-28 server/discover and legacy initialize) ----
 const TOOLS = [
   { name: "is_safe_to_call", description: "Check whether an MCP server (registry name or URL), and optionally one of its tools, is safe to call right now. Returns verdict safe/caution/unsafe, live status, latency, last tool change (breaking?), spec readiness, auth info, checked_at and age_seconds. Results older than 5 minutes are re-verified with a live handshake.",
-    inputSchema: { type: "object", properties: { server: { type: "string" }, tool: { type: "string" }, fresh: { type: "boolean", description: "force a live handshake now (otherwise automatic when the stored check is >5 min old)" } }, required: ["server"] } },
+    inputSchema: { type: "object", properties: { server: { type: "string" }, tool: { type: "string" }, fresh: { type: "boolean", description: "force a live handshake now (otherwise automatic when the stored check is >5 min old)" }, bearer_token: { type: "string", description: "optional: your own token for this server, for a one-off authenticated initialize + tools/list check. Used once, never stored or logged." } }, required: ["server"] } },
   { name: "suggest_alternatives", description: "Find working MCP servers with similar tools. query = a server name/URL, or capability text like 'send email'.",
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
   { name: "get_api_key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key or email needed. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
@@ -177,7 +220,7 @@ async function mcp(req, env, key, ctx) {
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
       let r;
-      if (params.name === "is_safe_to_call") r = await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: g.h });
+      if (params.name === "is_safe_to_call") r = await isSafe(env, a.server, a.tool, { ctx, fresh: a.fresh === true || a.fresh === "true", keyHash: g.h, bearer: a.bearer_token });
       else if (params.name === "suggest_alternatives") r = await alternatives(env, a.query, a.limit);
       else if (params.name === "watch_server") r = (await createWatch(env, g.h, a.server, a.webhook_url)).body;
       else if (params.name === "list_watches") r = (await listWatches(env, g.h)).body;
@@ -218,6 +261,23 @@ async function hit(req, env, ctx, url) {
   ]).catch(() => {}));
   return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "cache-control": "no-store" } });
 }
+// ---- on-time probing: the Worker cron (free) starts the GitHub probe workflow every 15 min via workflow_dispatch.
+// The probe itself (~2,000 servers, several requests each) does not fit Worker free limits (50 subrequests/invocation).
+async function dispatchProbe(env) {
+  const now = new Date().toISOString();
+  const note = (v) => env.DB.prepare("INSERT OR REPLACE INTO meta VALUES('last_dispatch', ?)").bind(JSON.stringify({ at: now, ...v })).run().catch(() => {});
+  if (!env.GH_DISPATCH_TOKEN) return note({ ok: false, error: "no GH_DISPATCH_TOKEN" });
+  const gh = (path, init = {}) => fetch("https://api.github.com/repos/toolweather/toolweather" + path, { ...init,
+    headers: { authorization: "Bearer " + env.GH_DISPATCH_TOKEN, accept: "application/vnd.github+json", "user-agent": "toolweather-cron", "x-github-api-version": "2022-11-28", ...(init.headers || {}) } });
+  try {
+    for (const st of ["queued", "in_progress"]) {
+      const r = await gh(`/actions/workflows/probe.yml/runs?status=${st}&per_page=1`);
+      if (r.ok && (await r.json()).total_count > 0) return note({ ok: true, skipped: "run already " + st });
+    }
+    const r = await gh("/actions/workflows/probe.yml/dispatches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: "main" }) });
+    return note({ ok: r.status === 204, http_status: r.status });
+  } catch (e) { return note({ ok: false, error: String(e.message || e).slice(0, 200) }); }
+}
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), p = url.pathname;
@@ -225,7 +285,8 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,DELETE,OPTIONS" } });
     if (p === "/health") {
       const m = await env.DB.prepare("SELECT v FROM meta WHERE k='last_ingest'").first();
-      return J({ ok: true, last_ingest: m && m.v });
+      const d = await env.DB.prepare("SELECT v FROM meta WHERE k='last_dispatch'").first();
+      return J({ ok: true, last_ingest: m && m.v, last_probe_dispatch: d ? parse(d.v) : null });
     }
     if (["/.well-known/mcp", "/.well-known/mcp.json", "/.well-known/mcp/server-card", "/mcp/server-card", "/server-card"].includes(p)) return J(CARD, 200, { "cache-control": "max-age=3600" });
     if (p === "/openapi.json") return J(OPENAPI, 200, { "cache-control": "max-age=3600" });
@@ -241,8 +302,9 @@ export default {
       trackKey(env, ctx, g, ep, "rest", ep === "is_safe_to_call" ? url.searchParams.get("server") : null);
       if (!g.ok) return J({ error: g.msg }, g.code);
       const h = { "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining, 0)) };
-      const r = p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: ["1", "true"].includes(url.searchParams.get("fresh")), keyHash: g.h })
+      const r = p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: ["1", "true"].includes(url.searchParams.get("fresh")), keyHash: g.h, bearer: req.headers.get("x-upstream-authorization") })
         : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit"));
+      if (req.headers.get("x-upstream-authorization")) h["cache-control"] = "no-store";
       return J(r, r.error ? 400 : 200, h);
     }
     if (p === "/v1/accuracy") {
@@ -292,5 +354,8 @@ export default {
     if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", endpoints: ["/v1/keys", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
-  async scheduled(ev, env, ctx) { ctx.waitUntil(runAlerts(env)); },
+  async scheduled(ev, env, ctx) {
+    ctx.waitUntil(runAlerts(env));
+    if (new Date(ev.scheduledTime).getUTCMinutes() % 15 === 0) ctx.waitUntil(dispatchProbe(env));
+  },
 };
