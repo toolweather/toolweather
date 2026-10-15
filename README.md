@@ -1,10 +1,12 @@
 # Toolweather
 
-**Toolweather suite** — one MCP for agents that need:
+**One connection gives you three tools.** Add `https://toolweather.toolweather.workers.dev/mcp` once.
 
-1. **MCP health** — is this MCP server/tool safe to call right now? (~2,000 servers from the [official MCP registry](https://registry.modelcontextprotocol.io), probed every 15 minutes: uptime, latency, breaking tool changes, 2026-07-28 spec readiness, auth).
-2. **Upstream** — is this AI/dev API down? is this model deprecated, and what replaces it? (~40 providers).
-3. **SpendGate** — should this agent pay? Score a planned spend before crypto, gift cards, subscriptions, or paid APIs (`approve` / `ask_human` / `block`).
+| | What you get | Tools |
+| --- | --- | --- |
+| **MCP health** | Is this MCP server or tool safe to call right now? About 2,000 servers from the [official MCP registry](https://registry.modelcontextprotocol.io), probed every 15 minutes. | `check_mcp_server_health` · `find_alternative_mcp_servers` · `watch_server` · `list_watches` · `unwatch_server` · `get_api_key` |
+| **Upstream** | API status and model retirements, across about 40 providers. | `check_api_status` · `check_model_deprecation` · `list_recent_api_changes` · `list_providers` · `get_digest` |
+| **SpendGate** | `approve` / `ask_human` / `block` before an agent pays. | `score_spend` · `get_quota` · `spendgate_get_api_key` |
 
 - Status page: https://toolweather.pages.dev
 - API / MCP: https://toolweather.toolweather.workers.dev/mcp
@@ -14,15 +16,85 @@
 
 ## Install
 
-Get a free key instantly (1,000 calls/day, 3 watches), no email or signup — or call with no key (50/day anonymous):
+Free to try. No signup. Connect with no key (50 calls/day). Call `get_api_key` (it works with no key) to raise the quota to 1,000 calls/day and 3 watches. The key is shown once. Send it as `X-API-Key` after that. A few new keys per network per day, plus a global daily cap.
 
-```sh
-curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
+You can also mint a key first with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys`, or click **Get a free key** on https://toolweather.pages.dev.
+
+### Add to Cursor
+
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9)
+
+```text
+cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9
 ```
 
-or click **Get a free key** on https://toolweather.pages.dev, or call the `get_api_key` MCP tool (works without a key). The key is shown once. Limits: a few new keys per network per day, plus a global daily cap. Then add the remote MCP server.
+Checked against the [Cursor MCP install link](https://cursor.com/docs/mcp/install-links) format: `cursor://anysphere.cursor-deeplink/mcp/install?name=$NAME&config=$BASE64`. `name` is the server name. `config` is the base64 of `JSON.stringify` of the single server object. Cursor's own example encodes `{"command":"npx","args":["-y","@modelcontextprotocol/server-postgres","postgresql://localhost/mydb"]}`. This link encodes `{"url":"https://toolweather.toolweather.workers.dev/mcp"}`. Cursor asks before it installs.
 
-**Claude Desktop** (`claude_desktop_config.json`; uses the `mcp-remote` bridge):
+### Cursor
+
+`~/.cursor/mcp.json` or `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "toolweather": {
+      "url": "https://toolweather.toolweather.workers.dev/mcp"
+    }
+  }
+}
+```
+
+### Claude Code
+
+`.mcp.json`. Set `"type": "http"`. Claude Code treats an entry that has a `url` and no `type` as stdio and skips it.
+
+```json
+{
+  "mcpServers": {
+    "toolweather": {
+      "type": "http",
+      "url": "https://toolweather.toolweather.workers.dev/mcp"
+    }
+  }
+}
+```
+
+```sh
+claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp
+```
+
+### Claude Desktop
+
+`claude_desktop_config.json` (remote HTTP through the `mcp-remote` bridge):
+
+```json
+{
+  "mcpServers": {
+    "toolweather": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp"]
+    }
+  }
+}
+```
+
+### Raise the quota
+
+After `get_api_key`, add the key.
+
+Cursor and Claude Code, inside the `toolweather` object:
+
+```json
+"headers": { "X-API-Key": "<key from get_api_key>" }
+```
+
+Claude Code CLI:
+
+```sh
+claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp --header "X-API-Key: <key>"
+```
+
+Claude Desktop — header arg plus env:
 
 ```json
 {
@@ -31,26 +103,28 @@ or click **Get a free key** on https://toolweather.pages.dev, or call the `get_a
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp",
                "--header", "X-API-Key:${TW_KEY}"],
-      "env": { "TW_KEY": "<your-key>" }
+      "env": { "TW_KEY": "<key from get_api_key>" }
     }
   }
 }
 ```
 
-**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`):
+### VS Code
+
+`.vscode/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "toolweather": {
-      "url": "https://toolweather.toolweather.workers.dev/mcp",
-      "headers": { "X-API-Key": "<your-key>" }
+      "type": "http",
+      "url": "https://toolweather.toolweather.workers.dev/mcp"
     }
   }
 }
 ```
 
-**VS Code** (`.vscode/mcp.json`):
+To send a key, prompt for it:
 
 ```json
 {
@@ -64,8 +138,6 @@ or click **Get a free key** on https://toolweather.pages.dev, or call the `get_a
   }
 }
 ```
-
-**Claude Code:** `claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp --header "X-API-Key: <your-key>"`
 
 Discovery files: [OpenAPI 3.1](https://toolweather.toolweather.workers.dev/openapi.json) ·
 [MCP server card](https://toolweather.toolweather.workers.dev/.well-known/mcp) ·
@@ -103,7 +175,7 @@ Get a key with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
 
 ### MCP
 
-Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server with header `X-API-Key: <key>`.
+Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server. No signup: connect with no key (50 calls/day). `get_api_key` raises that to 1,000 calls/day. Then send header `X-API-Key: <key>`.
 
 **MCP health:** `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`),
 `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), and change alerts
