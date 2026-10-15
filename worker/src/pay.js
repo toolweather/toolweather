@@ -3,17 +3,26 @@ import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { encodePaymentRequiredHeader, decodePaymentSignatureHeader, encodePaymentResponseHeader } from "@x402/core/http";
 
-export const PRICES = { check: "$0.002", live: "$0.005", alternatives: "$0.002", batch: "$0.02", watch: "$0.05" };
+// Agent-first: undercut the ~$0.01 industry median hard. Pay-per-call only (no subscription).
+export const PRICES = { check: "$0.001", live: "$0.003", alternatives: "$0.001", batch: "$0.01", watch: "$0.05" };
 export const BATCH_MAX = 25;
+export const FREE_KEY_DAILY = 1000;
+export const FREE_ANON_DAILY = 50;
 export const PRICE_TABLE = [
-  { item: "check_mcp_server_health / GET /v1/is_safe_to_call", free: "within 1,000 calls/day per key", paid: PRICES.check + " per call" },
+  { item: "check_mcp_server_health / GET /v1/is_safe_to_call", free: "within 1,000 calls/day per key (or 50/day anonymous, no key)", paid: PRICES.check + " per call" },
   { item: "live recheck (fresh=true or bearer_token)", free: "200/day per key", paid: PRICES.live + " per call" },
-  { item: "find_alternative_mcp_servers / GET /v1/suggest_alternatives", free: "within 1,000 calls/day per key", paid: PRICES.alternatives + " per call" },
+  { item: "find_alternative_mcp_servers / GET /v1/suggest_alternatives", free: "within the free daily quota", paid: PRICES.alternatives + " per call" },
   { item: "batch check, up to 25 servers (POST /v1/batch_check)", free: "each server counts as 1 call", paid: PRICES.batch + " per batch" },
   { item: "watch (change-alert webhook)", free: "3 per key", paid: PRICES.watch + " per extra watch per 30 days" },
   { item: "Upstream tools (API status, model deprecation, changes)", free: "Upstream's own quota", paid: "Upstream's own prices ($0.003 / $0.003 / $0.01)" },
 ];
-export const PAY_INFO = (env) => ({ protocol: "x402 v2", scheme: "exact", network: env.X402_NETWORK, asset: "USDC", pay_to: env.PAY_TO, prices_usd: PRICES, table: PRICE_TABLE });
+export const PAY_INFO = (env) => ({
+  protocol: "x402 v2", scheme: "exact", network: env.X402_NETWORK, asset: "USDC", pay_to: env.PAY_TO,
+  prices_usd: PRICES, table: PRICE_TABLE,
+  free: { calls_per_day_per_key: FREE_KEY_DAILY, anonymous_per_day: FREE_ANON_DAILY, live_rechecks_per_day: 200, watches: 3 },
+  model: "pay_per_call", no_subscription: true, free_resets: "00:00 UTC",
+  start: "Zero signup: call without a key (50 free/day), or POST /v1/keys for 1,000/day. Over the free cap, pay per call with x402 USDC on Base.",
+});
 
 let X = null;
 async function srv(env) {
@@ -27,6 +36,22 @@ const opt = (env, price) => ({ scheme: "exact", price, network: env.X402_NETWORK
 export const paymentHeader = (req) => req.headers.get("payment-signature") || req.headers.get("x-payment");
 const CORS = { "access-control-allow-origin": "*", "access-control-expose-headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-PAYMENT-RESPONSE, X-RateLimit-Limit, X-RateLimit-Remaining, X-Free-Remaining, X-Price-After-Free" };
 
+function challengeBody(env, price, pr, why) {
+  const msg = why || "Payment required.";
+  return {
+    ...pr,
+    message: `${msg} This call costs ${price} USDC on Base (eip155:8453) via x402. Retry with a PAYMENT-SIGNATURE header (any x402 client, e.g. @x402/fetch), or wait for the free quota to reset at 00:00 UTC.`,
+    price_usd: price,
+    asset: "USDC",
+    network: env.X402_NETWORK || "eip155:8453",
+    pay_to: env.PAY_TO,
+    free_resets: "00:00 UTC",
+    how_to_pay: "x402 v2 exact: attach PAYMENT-SIGNATURE (HTTP) or params._meta[\"x402/payment\"] (MCP). Free tier first: 50/day anonymous or 1,000/day with a free key (POST /v1/keys).",
+    pricing: "https://toolweather.pages.dev/#pricing",
+    well_known: "https://toolweather.toolweather.workers.dev/.well-known/x402",
+  };
+}
+
 // HTTP: 402 challenge, or verify -> run -> settle (only charged on success).
 export async function payHttp(req, env, price, desc, run, why) {
   const s = await srv(env);
@@ -35,9 +60,8 @@ export async function payHttp(req, env, price, desc, run, why) {
   const resource = { url: u.origin + u.pathname, description: "Toolweather: " + desc, mimeType: "application/json" };
   const hdr = paymentHeader(req);
   if (!hdr) {
-    const msg = why || "Payment required.";
-    const pr = await s.createPaymentRequiredResponse(reqs, resource, msg);
-    return new Response(JSON.stringify({ ...pr, message: `${msg} This call costs ${price} USDC on Base via x402. Retry with a PAYMENT-SIGNATURE header (any x402 client, e.g. @x402/fetch), or wait for the free quota to reset at 00:00 UTC.`, price_usd: price, pricing: "https://toolweather.pages.dev/#pricing" }, null, 2),
+    const pr = await s.createPaymentRequiredResponse(reqs, resource, why || "Payment required.");
+    return new Response(JSON.stringify(challengeBody(env, price, pr, why), null, 2),
       { status: 402, headers: { "content-type": "application/json", "PAYMENT-REQUIRED": encodePaymentRequiredHeader(pr), ...CORS } });
   }
   let payload; try { payload = decodePaymentSignatureHeader(hdr); } catch { return new Response(JSON.stringify({ error: "invalid payment header" }), { status: 400, headers: { "content-type": "application/json", ...CORS } }); }
@@ -59,7 +83,8 @@ export async function payMcp(req, env, name, price, pay, run, why) {
   const resource = { url: new URL(req.url).origin + "/mcp#" + name, description: "Toolweather MCP tool " + name, mimeType: "application/json" };
   if (!pay) {
     const pr = await s.createPaymentRequiredResponse(reqs, resource, why);
-    return { isError: true, content: [{ type: "text", text: `${why} This call costs ${price} USDC on Base via x402: retry with params._meta["x402/payment"] set to the signed payment payload, or wait for the reset at 00:00 UTC.\n` + JSON.stringify(pr) }], structuredContent: pr, _meta: { "x402/payment-required": pr } };
+    const body = challengeBody(env, price, pr, why);
+    return { isError: true, content: [{ type: "text", text: `${body.message}\n` + JSON.stringify(body) }], structuredContent: body, _meta: { "x402/payment-required": pr } };
   }
   let payload; try { payload = typeof pay === "string" ? JSON.parse(atob(pay)) : pay; } catch { return { isError: true, content: [{ type: "text", text: "invalid payment payload" }] }; }
   const match = s.findMatchingRequirements(reqs, payload);

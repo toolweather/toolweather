@@ -2,7 +2,7 @@
 import CARD from "./static/server-card.json";
 import OPENAPI from "./static/openapi.json";
 import { createWatch, listWatches, deleteWatch, runAlerts, freeWatchCount, FREE_WATCHES } from "./watches.js";
-import { PRICES, BATCH_MAX, PAY_INFO, payHttp, payMcp, paymentHeader } from "./pay.js";
+import { PRICES, BATCH_MAX, PAY_INFO, payHttp, payMcp, paymentHeader, FREE_KEY_DAILY, FREE_ANON_DAILY } from "./pay.js";
 const STALE_MS = 3600_000 * 1.5;
 const MODERN = "2026-07-28";
 const J = (o, s = 200, h = {}) => new Response(JSON.stringify(o, null, 2), { status: s, headers: { "content-type": "application/json", "access-control-allow-origin": "*", ...h } });
@@ -12,16 +12,30 @@ async function sha256(s) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
-async function gate(env, key, count = true) {
-  if (!key) return { ok: false, code: 401, msg: "missing API key (X-API-Key header). Get one free and instantly: POST /v1/keys (1,000 calls/day). Or skip the key and pay per call via x402 on /x402/* (see /.well-known/x402)." };
-  const h = await sha256(key);
-  const k = await env.DB.prepare("SELECT daily_limit FROM api_keys WHERE key_hash=?").bind(h).first();
-  if (!k) return { ok: false, code: 401, msg: "invalid API key" };
-  if (!count) return { ok: true, h, limit: k.daily_limit, remaining: null };
+async function ensureAnon(env) {
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS anon(ip_hash TEXT, day TEXT, used INT, PRIMARY KEY(ip_hash, day))").run().catch(() => {});
+}
+async function gate(env, key, count = true, req = null) {
   const day = new Date().toISOString().slice(0, 10);
-  const u = await env.DB.prepare("INSERT INTO usage VALUES(?,?,?) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+excluded.n RETURNING n").bind(h, day, count === true ? 1 : count).first();
-  if (u.n > k.daily_limit) return { ok: false, code: 429, over: true, h, limit: k.daily_limit, remaining: 0, msg: `Free daily quota of ${k.daily_limit} calls used up (resets 00:00 UTC).` };
-  return { ok: true, h, limit: k.daily_limit, remaining: k.daily_limit - u.n };
+  if (key) {
+    const h = await sha256(key);
+    const k = await env.DB.prepare("SELECT daily_limit FROM api_keys WHERE key_hash=?").bind(h).first();
+    if (!k) return { ok: false, code: 401, msg: "invalid API key" };
+    if (!count) return { ok: true, h, plan: "free_key", limit: k.daily_limit, remaining: null };
+    const u = await env.DB.prepare("INSERT INTO usage VALUES(?,?,?) ON CONFLICT(key_hash,day) DO UPDATE SET n=n+excluded.n RETURNING n").bind(h, day, count === true ? 1 : count).first();
+    if (u.n > k.daily_limit) return { ok: false, code: 429, over: true, h, plan: "free_key", limit: k.daily_limit, remaining: 0, msg: `Free daily quota of ${k.daily_limit} calls used up (resets 00:00 UTC). Pay ${PRICES.check} USDC on Base via x402, or wait for reset.` };
+    return { ok: true, h, plan: "free_key", limit: k.daily_limit, remaining: k.daily_limit - u.n };
+  }
+  // Anonymous: enough free calls for one-shot agent trials; no key, no signup.
+  if (!req) return { ok: false, code: 401, msg: `missing API key (X-API-Key). Free options: call without a key (${FREE_ANON_DAILY}/day anonymous), POST /v1/keys (${FREE_KEY_DAILY}/day), or pay per call on /x402/* (see /.well-known/x402).` };
+  await ensureAnon(env);
+  const lim = FREE_ANON_DAILY;
+  const ih = (await sha256(`anon|${day}|${env.SALT || "tw"}|${netOf(req.headers.get("cf-connecting-ip"))}`)).slice(0, 24);
+  if (!count) return { ok: true, h: "anon:" + ih, plan: "anonymous", limit: lim, remaining: null };
+  const n = count === true ? 1 : count;
+  const u = await env.DB.prepare("INSERT INTO anon(ip_hash,day,used) VALUES(?,?,?) ON CONFLICT(ip_hash,day) DO UPDATE SET used=used+excluded.used RETURNING used").bind(ih, day, n).first();
+  if (u.used > lim) return { ok: false, code: 429, over: true, h: "anon:" + ih, plan: "anonymous", limit: lim, remaining: 0, msg: `Anonymous free quota of ${lim} calls/day used up (resets 00:00 UTC). Get a free key (POST /v1/keys, ${FREE_KEY_DAILY}/day) or pay ${PRICES.check} USDC on Base via x402.` };
+  return { ok: true, h: "anon:" + ih, plan: "anonymous", limit: lim, remaining: lim - u.used };
 }
 // ---- self-serve keys: per-IP (salted daily hash, raw IP never stored) and global daily caps ----
 const KEYS_PER_IP_DAY = 3, KEYS_GLOBAL_DAY = 300;
@@ -36,9 +50,9 @@ async function newKey(env, req, source) {
   const r = await env.DB.prepare("INSERT INTO key_signups VALUES(?,?,1) ON CONFLICT(day,ih) DO UPDATE SET n=n+1 RETURNING n").bind(day, ih).first();
   if (r.n > KEYS_PER_IP_DAY) { await log("ip_cap"); return { code: 429, body: { error: "too_many_keys", message: `At most ${KEYS_PER_IP_DAY} new keys per network per day. Please reuse a key you already have, or try again tomorrow (UTC).` } }; }
   const k = "tw_" + [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
-  await env.DB.prepare("INSERT INTO api_keys VALUES(?,?,?,?)").bind(await sha256(k), "self:" + source, 1000, day).run();
+  await env.DB.prepare("INSERT INTO api_keys VALUES(?,?,?,?)").bind(await sha256(k), "self:" + source, FREE_KEY_DAILY, day).run();
   await log("created");
-  return { code: 201, body: { api_key: k, daily_limit: 1000, watches_limit: 3, note: "Shown once: store it now. Send it as the X-API-Key header (REST or /mcp).",
+  return { code: 201, body: { api_key: k, daily_limit: FREE_KEY_DAILY, watches_limit: 3, anonymous_daily: FREE_ANON_DAILY, note: "Shown once: store it now. Send it as the X-API-Key header (REST or /mcp).",
     try: "curl -H 'X-API-Key: " + k + "' 'https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server=io.github.owner/name'" } };
 }
 const ORDER = { safe: 0, caution: 1, unsafe: 2 };
@@ -187,7 +201,7 @@ async function batchCheck(env, servers) {
   const n = (v) => results.filter((r) => r.verdict === v).length;
   return { summary: `${results.length} servers: ${n("safe")} safe, ${n("caution")} caution, ${n("unsafe")} unsafe, ${n("unknown")} unknown (stored verdicts, no live recheck).`, checked_at: new Date().toISOString(), results };
 }
-const quotaInfo = (g, price) => ({ free_limit: g.limit, free_remaining: Math.max(g.remaining ?? 0, 0), resets: "00:00 UTC", price_after_free_usd: price, how_to_pay: "x402 v2 exact, USDC on Base; see /.well-known/x402" });
+const quotaInfo = (g, price) => ({ plan: g.plan || "free_key", free_limit: g.limit, free_remaining: Math.max(g.remaining ?? 0, 0), resets: "00:00 UTC", price_after_free_usd: price, asset: "USDC", network: "eip155:8453", how_to_pay: "x402 v2 exact, USDC on Base; see /.well-known/x402" });
 const quotaHeaders = (g, price) => ({ "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining ?? 0, 0)), "x-free-remaining": String(Math.max(g.remaining ?? 0, 0)), "x-price-after-free": price + " USDC (x402, Base)" });
 const BATCH_TOOL = { name: "batch_check_mcp_servers", title: "Check up to 25 MCP servers at once", description: `Check up to ${BATCH_MAX} MCP servers in one call (stored verdicts from the last 15-min probe, no live recheck). Use to vet a whole tool list at startup. Each server counts as 1 call against the free daily quota; over quota, ${PRICES.batch} per batch via x402. Example: {"servers":["com.ufcalendar/fight-api","https://mcp.example.com/mcp"]}.`,
   inputSchema: { type: "object", properties: { servers: { type: "array", items: { type: "string" }, maxItems: BATCH_MAX, description: "Registry names or remote URLs" } }, required: ["servers"] } };
@@ -211,12 +225,12 @@ const UP_TOOLS = [
 ];
 const TOOLS = [
   { name: "check_mcp_server_health", title: "Is this MCP server healthy / safe to call right now?",
-    description: "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Free: 1,000 calls/day per key (200 live rechecks); over quota $0.002 per call via x402 (USDC on Base). Alias: is_safe_to_call.",
+    description: "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Free: 1,000 calls/day per key or 50/day anonymous with no key (200 live rechecks/key); over quota $0.001 per call via x402 (USDC on Base). Alias: is_safe_to_call.",
     inputSchema: { type: "object", properties: { server: SRV, tool: { type: "string", description: "Optional tool name to confirm it still exists on the server, e.g. search" }, fresh: { type: "boolean", description: "Force a live handshake now (otherwise automatic when the stored check is >5 min old)" }, bearer_token: { type: "string", description: "Optional: your own token for this server, for a one-off authenticated initialize + tools/list check. Used once, never stored or logged." } }, required: ["server"] }, annotations: { title: "Is this MCP server healthy?", ...RO } },
   { name: "find_alternative_mcp_servers", title: "Find a working MCP server that does X",
-    description: "Find healthy, currently-working MCP servers by capability (e.g. 'send email', 'web search', 'postgres') or replacements for a broken server (pass its name/URL). Use when check_mcp_server_health says unsafe, or when you need a tool you don't have. Unhealthy servers are excluded. Returns summary first, then ranked servers with verdict, latency and matching tools. Example: {\"query\":\"send email\",\"limit\":5}. Free within the daily quota, then $0.002 per call via x402. Alias: suggest_alternatives.",
+    description: "Find healthy, currently-working MCP servers by capability (e.g. 'send email', 'web search', 'postgres') or replacements for a broken server (pass its name/URL). Use when check_mcp_server_health says unsafe, or when you need a tool you don't have. Unhealthy servers are excluded. Returns summary first, then ranked servers with verdict, latency and matching tools. Example: {\"query\":\"send email\",\"limit\":5}. Free within the daily quota (1,000/key or 50 anonymous), then $0.001 per call via x402. Alias: suggest_alternatives.",
     inputSchema: { type: "object", properties: { query: { type: "string", description: "Capability text like 'send email', or a server name/URL to replace", examples: ["send email", "web search"] }, limit: { type: "integer", description: "1-20, default 5" } }, required: ["query"] }, annotations: { title: "Find alternative MCP servers", ...RO } },
-  { name: "get_api_key", title: "Get a free Toolweather API key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key, email or signup needed; call this first if you have no key. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
+  { name: "get_api_key", title: "Get a free Toolweather API key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). Optional: you can also call health tools with no key at all (50 free/day anonymous). No email or signup. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
     inputSchema: { type: "object", properties: {} }, annotations: { title: "Get free API key", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
   { name: "watch_server", title: "Alert me when an MCP server breaks", description: "Get an HTTPS webhook when an MCP server goes down, its verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Use instead of polling. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free: 3 watches per key; each extra watch is $0.05 per 30 days via x402. Example: {\"server\":\"com.ufcalendar/fight-api\",\"webhook_url\":\"https://example.com/hook\"}.",
     inputSchema: { type: "object", properties: { server: SRV, webhook_url: { type: "string", description: "Public https URL that receives POSTed JSON alerts" } }, required: ["server", "webhook_url"] }, annotations: { title: "Watch a server", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
@@ -256,8 +270,8 @@ function decorate(r) {
   return { summary: `${n}: ${(r.verdict || "unknown").toUpperCase()}${why ? " (" + why + ")" : ""}. ${txt}`, verdict: r.verdict, recommended_action: act,
     checked_at: r.checked_at || r.last_checked || null, freshness: { age_seconds: age, fresh: age != null && age <= FRESH_S, source: r.source || "scheduled_probe" }, ...r };
 }
-const INFO = { name: "toolweather", title: "Toolweather", version: "0.3.0" };
-const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. No key yet? call get_api_key (free, instant: 1,000 calls/day, 3 watches). Over the free quota, tools return an x402 payment requirement in _meta[\"x402/payment-required\"] (USDC on Base, $0.002 per check); retry with params._meta[\"x402/payment\"]. Every result starts with a one-line summary.";
+const INFO = { name: "toolweather", title: "Toolweather", version: "0.4.0" };
+const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. Zero signup: call with no key (50 free/day anonymous) or get_api_key (1,000/day, 3 watches). Over the free quota, tools return an x402 payment requirement in _meta[\"x402/payment-required\"] (USDC on Base, $0.001 per check, pay-per-call, no subscription); retry with params._meta[\"x402/payment\"]. Every result starts with a one-line summary.";
 async function mcp(req, env, key, ctx) {
   let msg; try { msg = await req.json(); } catch { return J({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   if (Array.isArray(msg)) return J({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batch not supported" } }, 400);
@@ -279,14 +293,21 @@ async function mcp(req, env, key, ctx) {
       if (params.name === "get_api_key") {
         const r = await newKey(env, req, "mcp");
         track(env, ctx, "get_api_key", "mcp", r.code === 201 ? "ok" : "rate_limited");
-        return ok({ isError: r.code !== 201, content: [{ type: "text", text: r.code === 201 ? `Your Toolweather API key (shown once): ${r.body.api_key}\n1,000 calls/day, 3 watches. Send it as the X-API-Key header.` : r.body.message }], structuredContent: r.body });
+        return ok({ isError: r.code !== 201, content: [{ type: "text", text: r.code === 201 ? `Your Toolweather API key (shown once): ${r.body.api_key}\n1,000 calls/day, 3 watches (or 50/day with no key). Send it as the X-API-Key header.` : r.body.message }], structuredContent: r.body });
       }
       const isUp = UP_NAMES.has(params.name), pay = params._meta?.["x402/payment"];
       const units = params.name === "batch_check_mcp_servers" ? Math.min(Math.max((params.arguments?.servers || []).length, 1), BATCH_MAX) : 1;
-      const counts = !isUp && !pay && !["list_watches", "unwatch_server"].includes(params.name);
-      const g = await gate(env, key || params.arguments?.api_key, counts ? units : false);
+      const keyOrArg = key || params.arguments?.api_key;
+      if (["watch_server", "list_watches", "unwatch_server"].includes(params.name) && !keyOrArg) {
+        return ok({ isError: true, content: [{ type: "text", text: "watch tools need an API key. Call get_api_key first (free, instant: 1,000 calls/day, 3 watches)." }] });
+      }
+      const counts = !isUp && !pay && !["list_watches", "unwatch_server", "watch_server"].includes(params.name);
+      const g = await gate(env, keyOrArg, counts ? units : false, req);
       track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["check_mcp_server_health", "watch_server"].includes(params.name) ? params.arguments?.server : null);
+      if (["watch_server", "list_watches", "unwatch_server"].includes(params.name) && (!g.ok || g.plan === "anonymous" || !g.h || String(g.h).startsWith("anon:"))) {
+        return ok({ isError: true, content: [{ type: "text", text: "watch tools need an API key. Call get_api_key first (free, instant)." }] });
+      }
       const a = params.arguments || {};
       const MP = { check_mcp_server_health: (a.fresh === true || a.fresh === "true" || a.bearer_token) ? PRICES.live : PRICES.check, find_alternative_mcp_servers: PRICES.alternatives, batch_check_mcp_servers: PRICES.batch };
       const runTool = async (paid) => {
@@ -333,7 +354,7 @@ function track(env, ctx, endpoint, channel, outcome) {
 }
 // Per-key behaviour (hashed key only, no IPs): calls per day/endpoint/channel, cap hits, servers checked.
 function trackKey(env, ctx, g, endpoint, channel, server) {
-  if (!g.h) return;
+  if (!g.h || String(g.h).startsWith("anon:")) return;
   const day = today(), now = new Date().toISOString(), lim = g.code === 429 ? 1 : 0;
   const st = [env.DB.prepare(`INSERT INTO key_daily VALUES(?,?,?,?,1,?,?,?) ON CONFLICT(key_hash,day,endpoint,channel)
       DO UPDATE SET calls=calls+1, limited=limited+excluded.limited, last_ts=excluded.last_ts`).bind(g.h, day, endpoint, channel, lim, now, now)];
@@ -391,7 +412,7 @@ export default {
       const ep = p.slice(4);
       const paidReq = !!paymentHeader(req), fresh = ["1", "true"].includes(url.searchParams.get("fresh")), bearer = req.headers.get("x-upstream-authorization");
       const price = ep === "is_safe_to_call" ? (fresh || bearer ? PRICES.live : PRICES.check) : PRICES.alternatives;
-      const g = await gate(env, key, !paidReq);
+      const g = await gate(env, key, !paidReq, req);
       track(env, ctx, ep, "rest", paidReq ? "paid" : g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, ep, "rest", ep === "is_safe_to_call" ? url.searchParams.get("server") : null);
       const run = async (paid) => {
@@ -410,7 +431,7 @@ export default {
       let b; try { b = await req.clone().json(); } catch { return J({ error: "JSON body required: {servers:[...]}" }, 400); }
       const lane = p.startsWith("/x402"), paidReq = lane || !!paymentHeader(req);
       const units = Math.min(Math.max(Array.isArray(b.servers) ? b.servers.length : 1, 1), BATCH_MAX);
-      const g = lane ? { ok: true } : await gate(env, key, paidReq ? false : units);
+      const g = lane ? { ok: true } : await gate(env, key, paidReq ? false : units, req);
       track(env, ctx, "batch_check", "rest", paidReq ? "paid" : g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       const run = async (paid) => { const r = await batchCheck(env, b.servers); if (!paid) r.quota = quotaInfo(g, PRICES.batch); return J(r, r.error ? 400 : 200, paid ? {} : quotaHeaders(g, PRICES.batch)); };
       if (paidReq || g.over) return payHttp(req, env, PRICES.batch, `batch health check of up to ${BATCH_MAX} MCP servers`, () => run(true), g.msg);
@@ -430,7 +451,7 @@ export default {
       }, "Paid lane.");
     }
     if (p === "/.well-known/x402") return J({ version: 1, resources: ["/x402/is_safe_to_call?server={server}", "/x402/live_check?server={server}", "/x402/suggest_alternatives?q={q}", "/x402/batch_check"].map((x) => url.origin + x), pricing: PAY_INFO(env) }, 200, { "cache-control": "max-age=3600" });
-    if (p === "/v1/pricing") return J({ free: { calls_per_day_per_key: 1000, live_rechecks_per_day: LIVE_PER_KEY_DAY, watches: FREE_WATCHES, key: "POST /v1/keys (instant, no signup)" }, ...PAY_INFO(env), notes: ["You are never charged for errors.", "Upstream tools in this bundle keep Upstream's own free quota and prices."] }, 200, { "cache-control": "max-age=3600" });
+    if (p === "/v1/pricing") return J({ free: { calls_per_day_per_key: FREE_KEY_DAILY, anonymous_per_day: FREE_ANON_DAILY, live_rechecks_per_day: LIVE_PER_KEY_DAY, watches: FREE_WATCHES, key: "POST /v1/keys (instant, no signup)", no_key: `${FREE_ANON_DAILY}/day anonymous` }, ...PAY_INFO(env), notes: ["Zero signup: start with no key (anonymous free tier) or POST /v1/keys.", "Pay-per-call only via x402 (USDC on Base); no subscription.", "You are never charged for errors.", "Upstream tools in this bundle keep Upstream's own free quota and prices."] }, 200, { "cache-control": "max-age=3600" });
     if (p === "/v1/accuracy") {
       const { results } = await env.DB.prepare("SELECT * FROM accuracy_daily ORDER BY day DESC, verdict LIMIT 300").all();
       const days = {}, tot = {};
@@ -458,10 +479,12 @@ export default {
       if (!((id && req.method === "DELETE") || (!id && ["GET", "POST"].includes(req.method)))) return J({ error: "method not allowed" }, 405);
       let body = {};
       if (req.method === "POST") { try { body = await req.json(); } catch { return J({ error: "JSON body required: {server, webhook_url}" }, 400); } }
-      const g = await gate(env, key, false);
+      if (!key) return J({ error: "watches require an API key. Get one free: POST /v1/keys" }, 401);
+      const g = await gate(env, key, false, req);
       track(env, ctx, ep, "rest", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, ep, "rest", ep === "watches.create" ? body.server : null);
       if (!g.ok) return J({ error: g.msg }, g.code);
+      if (g.plan === "anonymous") return J({ error: "watches require an API key. Get one free: POST /v1/keys" }, 401);
       if (ep === "watches.create" && (paymentHeader(req) || (await freeWatchCount(env, g.h)) >= FREE_WATCHES)) {
         const pre = await createWatch(env, g.h, body.server, body.webhook_url, true, true);
         if (pre.code >= 400) return J(pre.body, pre.code);

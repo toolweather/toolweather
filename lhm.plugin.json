@@ -90,7 +90,7 @@
     {
       "name": "get_api_key",
       "title": "Get a free Toolweather API key",
-      "description": "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key, email or signup needed; call this first if you have no key. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
+      "description": "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). Optional: call health tools with no key (50/day anonymous). No email or signup. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
       "inputSchema": {
         "type": "object",
         "properties": {}

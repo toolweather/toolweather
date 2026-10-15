@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Toolweather API (suite)",
-    "version": "1.2.0",
-    "description": "Toolweather suite: is this MCP server healthy and safe to call right now? Live health verdicts for ~2,000 public MCP servers from the official registry, checked every 15 minutes, plus working alternatives. The same MCP endpoint also exposes Upstream tools (check_api_status, check_model_deprecation, list_recent_api_changes, list_providers, get_digest) for AI/dev API status and model deprecations; Upstream's own REST/x402 API remains at https://upstream.toolweather.workers.dev. Free tier: 1,000 calls/day per key; get a key instantly with POST /v1/keys (no email or signup). Change alerts: watch up to 3 servers per free key and receive signed HTTPS webhooks. Python urllib users: Cloudflare returns HTTP 403 'error code: 1010' for the default Python-urllib User-Agent; send any other User-Agent header. Pricing: free 1,000 calls/day per key and 3 watches; over quota, HTTP 402 x402 v2 exact (USDC on Base): $0.002/check, $0.005/live recheck, $0.02/batch of 25, $0.05 per extra watch per 30 days. See /v1/pricing.",
+    "version": "1.3.0",
+    "description": "Toolweather suite: is this MCP server healthy and safe to call right now? Live health verdicts for ~2,000 public MCP servers from the official registry, checked every 15 minutes, plus working alternatives. The same MCP endpoint also exposes Upstream tools (check_api_status, check_model_deprecation, list_recent_api_changes, list_providers, get_digest) for AI/dev API status and model deprecations; Upstream's own REST/x402 API remains at https://upstream.toolweather.workers.dev. Free tier: 1,000 calls/day per key or 50/day anonymous with no key; get a key instantly with POST /v1/keys (no email or signup). Change alerts: watch up to 3 servers per free key and receive signed HTTPS webhooks. Python urllib users: Cloudflare returns HTTP 403 'error code: 1010' for the default Python-urllib User-Agent; send any other User-Agent header. Pricing: free 1,000 calls/day per key (or 50/day anonymous, no key) and 3 watches; over quota, HTTP 402 x402 v2 exact pay-per-call (USDC on Base): $0.001/check, $0.003/live recheck, $0.01/batch of 25, $0.05 per extra watch per 30 days. No subscription. See /v1/pricing.",
     "contact": {
       "email": "toolweather@mail.grokbot.com",
       "url": "https://toolweather.pages.dev"
@@ -16,23 +16,25 @@
       "free": {
         "calls_per_day_per_key": 1000,
         "live_rechecks_per_day": 200,
-        "watches": 3
+        "watches": 3,
+        "anonymous_per_day": 50
       },
       "x402": {
         "network": "eip155:8453",
         "asset": "USDC",
         "pay_to": "0xb9D9af3Bf4C352fF4e6D3cf480bFc31CB832Ce29",
         "prices_usd": {
-          "check": 0.002,
-          "live": 0.005,
-          "alternatives": 0.002,
-          "batch": 0.02,
+          "check": 0.001,
+          "live": 0.003,
+          "alternatives": 0.001,
+          "batch": 0.01,
           "watch_30d": 0.05
         }
       },
-      "details": "https://toolweather.toolweather.workers.dev/v1/pricing"
+      "details": "https://toolweather.toolweather.workers.dev/v1/pricing",
+      "model": "pay_per_call"
     },
-    "x-guidance": "Free: get a key with POST /v1/keys (1,000 calls/day). Pay-only lanes need no key: POST /x402/is_safe_to_call {server, tool?} ($0.002), POST /x402/live_check {server} ($0.005), POST /x402/suggest_alternatives {q} ($0.002), POST /x402/batch_check {servers:[...]} ($0.02). GET with query parameters works too."
+    "x-guidance": "Zero signup: call /v1/is_safe_to_call with no key (50 free/day anonymous), or POST /v1/keys (1,000/day). Pay-per-call only (no subscription). Over free quota or on pay-only lanes: POST /x402/is_safe_to_call {server, tool?} ($0.001), POST /x402/live_check {server} ($0.003), POST /x402/suggest_alternatives {q} ($0.001), POST /x402/batch_check {servers:[...]} ($0.01). GET with query parameters works too."
   },
   "servers": [
     {
@@ -431,7 +433,7 @@
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.002000"
+            "amount": "0.001000"
           },
           "protocols": [
             {
@@ -587,7 +589,7 @@
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.002000"
+            "amount": "0.001000"
           },
           "protocols": [
             {
@@ -937,7 +939,7 @@
     "/v1/batch_check": {
       "post": {
         "operationId": "batch_check",
-        "summary": "Health verdicts for up to 25 MCP servers (each counts as 1 free call; over quota $0.02 per batch via x402)",
+        "summary": "Health verdicts for up to 25 MCP servers (each counts as 1 free call; over quota $0.01 per batch via x402)",
         "security": [
           {
             "apiKeyHeader": []
@@ -999,7 +1001,7 @@
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.020000"
+            "amount": "0.010000"
           },
           "protocols": [
             {
@@ -1023,7 +1025,7 @@
     "/x402/is_safe_to_call": {
       "post": {
         "operationId": "x402_is_safe_to_call_post",
-        "summary": "Pay-only lane, no key: health verdict ($0.002 via x402)",
+        "summary": "Pay-only lane, no key: health verdict ($0.001 via x402)",
         "responses": {
           "200": {
             "description": "Verdict",
@@ -1067,7 +1069,7 @@
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.002000"
+            "amount": "0.001000"
           },
           "protocols": [
             {
@@ -1076,7 +1078,7 @@
           ]
         },
         "security": [],
-        "description": "Pay-only lane, no key: health verdict ($0.002 via x402). GET with the same fields as query parameters also works.",
+        "description": "Pay-only lane, no key: health verdict ($0.001 via x402). GET with the same fields as query parameters also works.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1106,7 +1108,7 @@
     "/x402/live_check": {
       "post": {
         "operationId": "x402_live_check_post",
-        "summary": "Pay-only lane, no key: forced live recheck ($0.005 via x402)",
+        "summary": "Pay-only lane, no key: forced live recheck ($0.003 via x402)",
         "responses": {
           "200": {
             "description": "Verdict",
@@ -1150,7 +1152,7 @@
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.005000"
+            "amount": "0.003000"
           },
           "protocols": [
             {
@@ -1159,7 +1161,7 @@
           ]
         },
         "security": [],
-        "description": "Pay-only lane, no key: forced live recheck ($0.005 via x402). GET with the same fields as query parameters also works.",
+        "description": "Pay-only lane, no key: forced live recheck ($0.003 via x402). GET with the same fields as query parameters also works.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1188,7 +1190,7 @@
     "/x402/suggest_alternatives": {
       "post": {
         "operationId": "x402_suggest_alternatives_post",
-        "summary": "Pay-only lane, no key: alternatives ($0.002 via x402)",
+        "summary": "Pay-only lane, no key: alternatives ($0.001 via x402)",
         "responses": {
           "200": {
             "description": "Alternatives",
@@ -1223,7 +1225,7 @@
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.002000"
+            "amount": "0.001000"
           },
           "protocols": [
             {
@@ -1232,7 +1234,7 @@
           ]
         },
         "security": [],
-        "description": "Pay-only lane, no key: alternatives ($0.002 via x402). GET with the same fields as query parameters also works.",
+        "description": "Pay-only lane, no key: alternatives ($0.001 via x402). GET with the same fields as query parameters also works.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1263,7 +1265,7 @@
     "/x402/batch_check": {
       "post": {
         "operationId": "x402_batch_check",
-        "summary": "Pay-only lane, no key: batch of up to 25 ($0.02 via x402)",
+        "summary": "Pay-only lane, no key: batch of up to 25 ($0.01 via x402)",
         "requestBody": {
           "required": true,
           "content": {
@@ -1320,7 +1322,7 @@
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.020000"
+            "amount": "0.010000"
           },
           "protocols": [
             {

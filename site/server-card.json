@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
   "name": "io.github.toolweather/toolweather",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "title": "Toolweather",
-  "description": "Toolweather suite: MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations. One MCP endpoint. Free daily quota; heavier use pay-per-call via x402.",
+  "description": "Toolweather suite: MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations. One MCP endpoint. Zero signup: 50 free/day anonymous or 1,000/day with a free key; heavier use pay-per-call via x402 (no subscription).",
   "websiteUrl": "https://toolweather.pages.dev",
   "repository": {
     "url": "https://github.com/toolweather/toolweather",
@@ -16,8 +16,8 @@
       "headers": [
         {
           "name": "X-API-Key",
-          "description": "Free API key (1,000 calls/day). Get one instantly: POST https://toolweather.toolweather.workers.dev/v1/keys or the get_api_key tool (no key needed).",
-          "isRequired": true,
+          "description": "Optional free API key (1,000 calls/day). Without a key you still get 50 free calls/day anonymous. Get a key instantly: POST https://toolweather.toolweather.workers.dev/v1/keys or the get_api_key tool.",
+          "isRequired": false,
           "isSecret": true
         }
       ],
@@ -66,6 +66,7 @@
     "io.toolweather/pricing": {
       "free": {
         "calls_per_day_per_key": 1000,
+        "anonymous_per_day": 50,
         "live_rechecks_per_day": 200,
         "watches": 3
       },
@@ -74,14 +75,15 @@
         "asset": "USDC",
         "pay_to": "0xb9D9af3Bf4C352fF4e6D3cf480bFc31CB832Ce29",
         "prices_usd": {
-          "check": 0.002,
-          "live": 0.005,
-          "alternatives": 0.002,
-          "batch": 0.02,
+          "check": 0.001,
+          "live": 0.003,
+          "alternatives": 0.001,
+          "batch": 0.01,
           "watch_30d": 0.05
         }
       },
-      "details": "https://toolweather.toolweather.workers.dev/v1/pricing"
+      "details": "https://toolweather.toolweather.workers.dev/v1/pricing",
+      "model": "pay_per_call"
     }
   }
 }

@@ -12,7 +12,7 @@
 
 ## Install
 
-Get a free key instantly (1,000 calls/day, 3 watches), no email or signup:
+Get a free key instantly (1,000 calls/day, 3 watches), no email or signup — or call with no key (50/day anonymous):
 
 ```sh
 curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
@@ -86,7 +86,7 @@ the last tool change (and whether it was breaking), `last_checked`, plus `checke
 
 **Fresh results:** if the stored check is older than 5 minutes, or you pass `fresh=true`, Toolweather runs a quick read-only `initialize` handshake against the server right then (4 s timeout) and returns that result (`source: live_probe`, `live: {...}`). Live results are cached briefly (a server is re-probed at most once a minute) and each key gets 200 live checks a day; after that you get the newest cached result.
 
-Free tier: 1,000 calls per key per day.
+Free tier: 1,000 calls per key per day, or 50/day anonymous with no key. Over quota: pay-per-call via x402 ($0.001/check, $0.003/live, $0.01/batch, $0.05/30d watch).
 
 > **Getting `HTTP 403` with body `error code: 1010`?** That is Cloudflare's edge rejecting Python's default `Python-urllib/x.y` User-Agent before the request reaches Toolweather. It applies to all free `*.workers.dev` / `*.pages.dev` addresses and can't be disabled there. It is not a key problem. Send any other User-Agent:
 >

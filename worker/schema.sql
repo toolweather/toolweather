@@ -24,3 +24,5 @@ CREATE TABLE IF NOT EXISTS keys_created(day TEXT, source TEXT, outcome TEXT, n I
 CREATE TABLE IF NOT EXISTS live_checks(url TEXT PRIMARY KEY, ts TEXT, status TEXT, http_status INT, latency_ms REAL, protocol_version TEXT, error TEXT);
 CREATE TABLE IF NOT EXISTS live_usage(key_hash TEXT, day TEXT, n INT, PRIMARY KEY(key_hash, day));
 CREATE TABLE IF NOT EXISTS accuracy_daily(day TEXT, verdict TEXT, pairs INT, matched INT, avg_gap_s INT, PRIMARY KEY(day, verdict));
+
+CREATE TABLE IF NOT EXISTS anon(ip_hash TEXT, day TEXT, used INT, PRIMARY KEY(ip_hash, day));
