@@ -2,7 +2,15 @@
 
 > Toolweather is a suite for AI agents: (1) MCP server health — whether an MCP server or tool is safe to call right now, with working alternatives (~2,000 remote MCP servers from the official MCP registry, probed every 15 minutes); (2) Upstream — whether an AI/dev API is down, whether a model is deprecated and what replaces it (~40 providers); (3) SpendGate — whether a planned spend should be approved, escalated to a human, or blocked. One MCP endpoint. Health checks are read-only: those tools are never called. SpendGate scores a planned payment; it does not send it.
 
-Free tier: 1,000 calls per API key per day, or 50/day anonymous with no key. Get a key instantly, no email or signup: `POST https://toolweather.toolweather.workers.dev/v1/keys` (returns `api_key`, shown once), or call the MCP tool `get_api_key` without a key.
+One connection (`https://toolweather.toolweather.workers.dev/mcp`) gives you three tools:
+
+- MCP health: `check_mcp_server_health`, `find_alternative_mcp_servers`, `watch_server`, `list_watches`, `unwatch_server`, `get_api_key`
+- Upstream (API status and model retirements): `check_api_status`, `check_model_deprecation`, `list_recent_api_changes`, `list_providers`, `get_digest`
+- SpendGate (`approve` / `ask_human` / `block`): `score_spend`, `get_quota`, `spendgate_get_api_key`
+
+Free to try. No signup. Connect with no key (50 calls/day). `get_api_key` raises the quota to 1,000 calls/day and 3 watches (the key is shown once; then send `X-API-Key`). Same key via `POST https://toolweather.toolweather.workers.dev/v1/keys`.
+
+Cursor install deeplink (base64 config is `{"url":"https://toolweather.toolweather.workers.dev/mcp"}`): `cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9`
 
 IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-urllib/x.y` User-Agent with `HTTP 403` and body `error code: 1010`, before the request reaches Toolweather. This affects every free `*.workers.dev` and `*.pages.dev` address and cannot be turned off there. Fix: send any other User-Agent:
 

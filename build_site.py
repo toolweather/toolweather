@@ -1,5 +1,5 @@
 """Generate site/index.html (static Toolweather status page preview) from mcp_health.db."""
-import html, json, sqlite3, statistics, datetime, os
+import base64, html, json, sqlite3, statistics, datetime, os
 DB = "mcp_health.db"; OUT = "site/index.html"
 c = sqlite3.connect(DB); c.row_factory = sqlite3.Row
 LATEST = """SELECT e.server_name, e.url, p.* FROM endpoints e JOIN probes p ON p.id=(SELECT max(id) FROM probes WHERE endpoint_id=e.id)"""
@@ -36,6 +36,96 @@ brk_html = "".join(f'<tr><td><div class="nm">{esc(r["server_name"])}</div><div c
                    f'<td><span class="pill bad">{esc((r["error"] or "").split(":")[0][:18])}</span></td></tr>' for r in broken)
 chg_html = "".join(f'<li><span class="pill {"bad" if r["severity"]=="breaking" else "ok"}">{r["severity"]}</span> <b>{esc(r["server_name"])}</b> {esc(r["kind"].replace("_"," "))} <code>{esc(r["tool"] or "")}</code></li>' for r in changes) or "<li>No tool changes yet.</li>"
 ex = rel[0]["server_name"] if rel else "io.github.example/server"
+_mcp_url = "https://toolweather.toolweather.workers.dev/mcp"
+_cursor_cfg = json.dumps({"url": _mcp_url}, separators=(",", ":"))
+_cursor_b64 = base64.b64encode(_cursor_cfg.encode()).decode()
+cursor_deeplink = "cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=" + _cursor_b64
+cursor_href = html.escape(cursor_deeplink, quote=True)
+suite_css = """
+.hero{color:var(--h);font-size:22px;font-weight:600;letter-spacing:-.02em;margin:8px 0 14px}
+.products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:0 0 18px}
+.products .card{padding:16px}.products h2{font-size:15px;margin:0 0 4px}
+.products p{margin:0 0 10px;color:var(--mut);font-size:13.5px}
+.tools{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:0}
+.tools code{color:var(--h);background:var(--row);border-radius:6px;padding:2px 6px;font-size:12px}
+.install{margin-bottom:22px}.try{margin:0 0 12px;font-size:14.5px}
+.cfg{margin-top:14px}.cfgh{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.cfgh h3{margin:0;font-size:14px}.cfgh span{color:var(--mut);font-size:12.5px}
+.copy{margin-left:auto;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:3px 10px;font:13px inherit;cursor:pointer}
+.addcursor{display:inline-flex;margin:0 0 12px}.addcursor img{height:32px;width:auto}
+.addcursor .for-dark{display:none}
+:root[data-theme=dark] .addcursor .for-light{display:none}
+:root[data-theme=dark] .addcursor .for-dark{display:inline}
+.install pre{white-space:pre;word-break:normal;overflow:auto}
+@media(max-width:800px){.products{grid-template-columns:1fr}.hero{font-size:18px}}
+"""
+suite_html = f"""<p class="hero">One connection gives you three tools.</p>
+<div class="products">
+<div class="card"><h2>MCP health</h2><p>Is this MCP server or tool safe to call right now? About 2,000 servers, probed every 15 minutes.</p><ul class="tools"><li><code>check_mcp_server_health</code></li><li><code>find_alternative_mcp_servers</code></li><li><code>watch_server</code></li><li><code>list_watches</code></li><li><code>unwatch_server</code></li><li><code>get_api_key</code></li></ul></div>
+<div class="card"><h2>Upstream</h2><p>API status and model retirements, across about 40 providers.</p><ul class="tools"><li><code>check_api_status</code></li><li><code>check_model_deprecation</code></li><li><code>list_recent_api_changes</code></li><li><code>list_providers</code></li><li><code>get_digest</code></li></ul></div>
+<div class="card"><h2>SpendGate</h2><p>approve, ask_human, or block before an agent pays.</p><ul class="tools"><li><code>score_spend</code></li><li><code>get_quota</code></li><li><code>spendgate_get_api_key</code></li></ul></div>
+</div>
+<div class="card install" id="install"><h2>Connect once</h2>
+<p class="try">Free to try. No signup. These configs connect with no key (50 calls/day). Call <code>get_api_key</code> to raise the quota to 1,000 calls/day and 3 watches, then send that key as <code>X-API-Key</code>.</p>
+<a class="addcursor" href="{cursor_href}"><img class="for-light" src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add to Cursor" height="32"><img class="for-dark" src="https://cursor.com/deeplink/mcp-install-light.svg" alt="Add to Cursor" height="32"></a>
+<div class="cfg"><div class="cfgh"><h3>Cursor install link</h3><button class="copy" type="button" data-copy="cfg-deeplink">Copy</button></div>
+<pre id="cfg-deeplink">{cursor_deeplink}</pre></div>
+<div class="cfg"><div class="cfgh"><h3>Cursor</h3><span>~/.cursor/mcp.json</span><button class="copy" type="button" data-copy="cfg-cursor">Copy</button></div>
+<pre id="cfg-cursor">{{
+  "mcpServers": {{
+    "toolweather": {{
+      "url": "{_mcp_url}"
+    }}
+  }}
+}}</pre></div>
+<div class="cfg"><div class="cfgh"><h3>Claude Code</h3><span>.mcp.json</span><button class="copy" type="button" data-copy="cfg-claude-code">Copy</button></div>
+<pre id="cfg-claude-code">{{
+  "mcpServers": {{
+    "toolweather": {{
+      "type": "http",
+      "url": "{_mcp_url}"
+    }}
+  }}
+}}</pre></div>
+<div class="cfg"><div class="cfgh"><h3>Claude Code CLI</h3><button class="copy" type="button" data-copy="cfg-claude-cli">Copy</button></div>
+<pre id="cfg-claude-cli">claude mcp add --transport http toolweather {_mcp_url}</pre></div>
+<div class="cfg"><div class="cfgh"><h3>Claude Desktop</h3><span>claude_desktop_config.json</span><button class="copy" type="button" data-copy="cfg-desktop">Copy</button></div>
+<pre id="cfg-desktop">{{
+  "mcpServers": {{
+    "toolweather": {{
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "{_mcp_url}"]
+    }}
+  }}
+}}</pre></div>
+<div class="cfg"><div class="cfgh"><h3>Raise the quota</h3><span>after get_api_key</span><button class="copy" type="button" data-copy="cfg-raise">Copy</button></div>
+<pre id="cfg-raise">Cursor and Claude Code, inside toolweather:
+"headers": {{ "X-API-Key": "&lt;key from get_api_key&gt;" }}
+
+Claude Code CLI:
+claude mcp add --transport http toolweather {_mcp_url} --header "X-API-Key: &lt;key&gt;"
+
+Claude Desktop args, plus "env": {{ "TW_KEY": "&lt;key&gt;" }}:
+"--header", "X-API-Key:${{TW_KEY}}"</pre></div>
+</div>
+<script>
+document.querySelectorAll("[data-copy]").forEach(function(b){{
+  b.addEventListener("click", function(){{
+    var el=document.getElementById(b.getAttribute("data-copy"));
+    var text=el.textContent.replace(/^\\n+|\\n+$/g, "");
+    var ta=document.createElement("textarea");
+    ta.value=text; ta.setAttribute("readonly","");
+    ta.style.position="fixed"; ta.style.top="0"; ta.style.left="0"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok=false; try{{ ok=document.execCommand("copy"); }}catch(e){{}}
+    ta.remove();
+    if(navigator.clipboard&&window.isSecureContext) navigator.clipboard.writeText(text).catch(function(){{}});
+    var prev=b.textContent;
+    b.textContent=ok?"Copied":"Copy failed";
+    setTimeout(function(){{ b.textContent=prev; }}, 2500);
+  }});
+}});
+</script>"""
 page = f"""<!doctype html><html lang="en"><head><link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt"><link rel="service-desc" type="application/json" href="https://toolweather.toolweather.workers.dev/openapi.json"><link rel="mcp-server-card" type="application/json" href="/.well-known/mcp"><script>(function(){{var t=localStorage.getItem("tw-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t}})();
 function twToggle(){{var d=document.documentElement,t=d.dataset.theme==="dark"?"light":"dark";d.dataset.theme=t;localStorage.setItem("tw-theme",t);document.getElementById("tg").textContent=t==="dark"?"Light mode":"Dark mode"}}</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Toolweather — MCP health, API status, and spend checks for agents</title><style>
@@ -58,9 +148,11 @@ pre{{background:#2b2f36;border:1px solid var(--line);border-radius:12px;padding:
 pre{{white-space:pre-wrap;word-break:break-all}}.u{{word-break:break-all}}.chg li{{overflow-wrap:anywhere;padding:6px 0;border-bottom:1px solid var(--row);font-size:13.5px}}code{{color:#3f8f8a}}
 .badge{{display:inline-flex;font:600 12px/1 Verdana,sans-serif;border-radius:5px;overflow:hidden;margin:4px 8px 4px 0}}.badge span{{padding:6px 8px}}
 .badge{{color:#fff}}.b1{{background:#4b5563}}.b2{{background:#3f8f8a}}.b3{{background:#b7791f}}.b4{{background:#5b84b1}}footer{{color:var(--mut);font-size:12px;margin-top:28px}}
+{suite_css}
 </style></head><body><div class="wrap">
 <header><div class="logo"><svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><circle cx="15" cy="15" r="7" fill="#f2c46d"/><g stroke="#f2c46d" stroke-width="2.2" stroke-linecap="round"><path d="M15 3v2.5M3 15h2.5M6.5 6.5l1.8 1.8M23.5 6.5l-1.8 1.8"/></g><path d="M13 31a6 6 0 0 1 1-11.9A8 8 0 0 1 29.3 21 5 5 0 0 1 29 31z" fill="var(--card)" stroke="#3f8f8a" stroke-width="2.2" stroke-linejoin="round"/></svg><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check {when}<button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
-<h1>MCP health, API status, and spend checks for agents</h1><p class="sub">Toolweather suite: live MCP server health (~2,000 servers), AI/dev API status and model deprecations (~40 providers), and SpendGate spend scoring before an agent pays. One MCP endpoint. Read-only probes every 15 minutes.</p>
+<h1>MCP health, API status, and spend checks for agents</h1>
+{suite_html}
 <div class="stats"><div class="stat"><b>{total:,}</b><span>servers monitored</span></div><div class="stat"><b>{pct(by.get('ok',0))}</b><span>healthy (open)</span></div>
 <div class="stat"><b>{pct(by.get('auth_required',0))}</b><span>behind auth</span></div><div class="stat"><b>{med:.0f} ms</b><span>median handshake</span></div>
 <div class="stat"><b>{tools_total:,}</b><span>tools tracked</span></div></div>
@@ -68,7 +160,7 @@ pre{{white-space:pre-wrap;word-break:break-all}}.u{{word-break:break-all}}.chg l
 <div><div class="card"><h2>2026-07-28 spec readiness</h2><div class="bar">{bar}</div><ul class="legend">{legend}</ul></div>
 <div class="card" style="margin-top:18px"><h2>Recently broken</h2><table><tr><th>Server</th><th style="width:120px">Error</th></tr>{brk_html}</table></div></div></div>
 <div class="card" id="accuracy" style="margin-bottom:18px"><h2>Track record</h2><p class="sub" style="margin:4px 0 10px">How often a verdict still held at the very next scheduled check of the same server (usually ~15 minutes later). This measures how stable our verdicts are between checks, not whether real tool calls succeed. History starts Oct 15, 2026, so samples are still small. <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/v1/accuracy">Raw data</a></p><div id="accout">Loading…</div></div>
-<div class="card" id="key" style="margin-bottom:18px"><h2>Get a free API key</h2><p class="sub" style="margin:4px 0 10px">1,000 checks/day and 3 change-alert watches. Instant, no email or signup. Agents can also call <code>POST /v1/keys</code> or the <code>get_api_key</code> MCP tool.</p>
+<div class="card" id="key" style="margin-bottom:18px"><h2>Get a free API key</h2><p class="sub" style="margin:4px 0 10px">No signup. With no key you get 50 checks/day. <code>get_api_key</code> (or this button, or <code>POST /v1/keys</code>) raises that to 1,000 checks/day and 3 change-alert watches. The key is shown once.</p>
 <button id="getkey" style="padding:8px 16px;border-radius:8px;border:0;background:var(--acc);color:#fff;font-weight:600;cursor:pointer">Get a free key</button>
 <pre id="keyout" style="display:none;margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre></div>
 <div class="card" id="pricing" style="margin-bottom:18px"><h2>Pricing</h2><p class="sub" style="margin:4px 0 10px">Zero signup. Agents start free (no key needed), then pay per call in USDC on Base via <a style="color:var(--acc)" href="https://www.x402.org">x402</a> — no account, no subscription. You're never charged for errors.</p><table><tr><th>What</th><th>Free</th><th>Beyond free</th></tr><tr><td>Health check (MCP tool or <code>/v1/is_safe_to_call</code>)</td><td>1,000/day per key, or 50/day anonymous (no key)</td><td>$0.001 per call</td></tr><tr><td>Live recheck (<code>fresh=true</code> or your own token)</td><td>200/day per key</td><td>$0.003 per call</td></tr><tr><td>Find alternatives</td><td>Within the free daily quota</td><td>$0.001 per call</td></tr><tr><td>Batch check, up to 25 servers</td><td>Each server counts as 1 call</td><td>$0.01 per batch</td></tr><tr><td>Change-alert watches</td><td>3 per key</td><td>$0.05 per extra watch per 30 days</td></tr><tr><td>Upstream tools (API status, model deprecations)</td><td colspan="2">Upstream's own free quota and prices</td></tr><tr><td>SpendGate tools (<code>score_spend</code>, <code>get_quota</code>, <code>spendgate_get_api_key</code>)</td><td colspan="2">SpendGate's own free quota and prices</td></tr></table><p class="sub" style="margin-top:8px">Every metered response carries <code>X-Free-Remaining</code> and <code>X-Price-After-Free</code> (and a <code>quota</code> body field) so agents can plan. Machine-readable: <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/v1/pricing">/v1/pricing</a> · <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/.well-known/x402">/.well-known/x402</a></p></div>
@@ -86,5 +178,5 @@ is_safe_to_call(server="{esc(ex)}", tool="search")</pre></div>
 <div><img alt="Toolweather badge" src="https://toolweather.toolweather.workers.dev/badge/{esc(ex)}.svg"></div>
 <pre style="margin-top:10px">[![Toolweather](https://toolweather.toolweather.workers.dev/badge/{esc(ex)}.svg)](https://toolweather.pages.dev/)</pre></div></div>
 <footer>Preview generated from local probe data. Probes only run initialize/server-discover and tools/list — tools are never called. Free tier: 1,000 checks/day per key (<a style="color:var(--acc)" href="#key">get one instantly</a>), plus change alerts (signed webhooks) for 3 watched servers; heavier use is pay-per-call (<a style="color:var(--acc)" href="#pricing">pricing</a>) — see <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather#change-alerts-webhooks">docs</a>. <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather">GitHub</a> · <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/openapi.json">OpenAPI</a> · <a style="color:var(--acc)" href="/llms.txt">llms.txt</a> · <a style="color:var(--acc)" href="/.well-known/mcp">MCP server card</a> · MCP suite endpoint: https://toolweather.toolweather.workers.dev/mcp (MCP health + Upstream + SpendGate tools) · SpendGate: <a style="color:var(--acc)" href="https://spendgate.toolweather.workers.dev">spendgate.toolweather.workers.dev</a> · Upstream REST: <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev">upstream.toolweather.workers.dev</a> · New: the free daily <a style="color:var(--acc)" href="https://upstream-api.pages.dev/digest/">breaking-changes digest</a> (MCP + AI/dev APIs, <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev/digest/feed.xml">RSS</a>) · <a style="color:var(--acc)" href="/terms">Terms</a> · <a style="color:var(--acc)" href="/privacy">Privacy</a> · Contact: toolweather@mail.grokbot.com · Cookie-free, anonymous visit counting.</footer>
-</div><script>document.getElementById("tg").textContent=document.documentElement.dataset.theme==="dark"?"Light mode":"Dark mode"</script><script>fetch("https://toolweather.toolweather.workers.dev/v1/accuracy").then(function(r){{return r.json()}}).then(function(d){{var L={{safe:"Safe (up)",caution_auth:"Caution (needs login)",unsafe:"Unsafe (down)"}},h="<table><tr><th>Day (UTC)</th>";Object.keys(L).forEach(function(k){{h+="<th>"+L[k]+"</th>"}});h+="</tr>";d.daily.forEach(function(x){{h+="<tr><td>"+x.day+"</td>";Object.keys(L).forEach(function(k){{var v=x[k];h+="<td>"+(v?(100*v.match_rate).toFixed(1)+"% <span class=u>of "+v.pairs.toLocaleString()+"</span>":"–")+"</td>"}});h+="</tr>"}});document.getElementById("accout").innerHTML=d.daily.length?h+"</table>":"No data yet."}}).catch(function(){{document.getElementById("accout").textContent="Track record unavailable right now."}})</script><script>document.getElementById("getkey").onclick=async function(){{var b=this,o=document.getElementById("keyout");b.disabled=true;b.textContent="Creating…";try{{var r=await fetch("https://toolweather.toolweather.workers.dev/v1/keys?source=web",{{method:"POST"}}),d=await r.json();o.style.display="block";o.textContent=r.ok?"Your key (shown once, copy it now):\n"+d.api_key+"\n\nUse it as the X-API-Key header:\n"+d.try:(d.message||"Something went wrong, please try again.");b.textContent=r.ok?"Key created":"Get a free key";if(!r.ok)b.disabled=false}}catch(e){{o.style.display="block";o.textContent="Network error, please try again.";b.disabled=false;b.textContent="Get a free key"}}}}</script><script>try{{fetch("https://toolweather.toolweather.workers.dev/v1/hit?p="+encodeURIComponent(location.pathname)+"&r="+encodeURIComponent(document.referrer),{{mode:"no-cors",keepalive:true}})}}catch(e){{}}</script></body></html>"""
+</div><script>document.getElementById("tg").textContent=document.documentElement.dataset.theme==="dark"?"Light mode":"Dark mode"</script><script>fetch("https://toolweather.toolweather.workers.dev/v1/accuracy").then(function(r){{return r.json()}}).then(function(d){{var L={{safe:"Safe (up)",caution_auth:"Caution (needs login)",unsafe:"Unsafe (down)"}},h="<table><tr><th>Day (UTC)</th>";Object.keys(L).forEach(function(k){{h+="<th>"+L[k]+"</th>"}});h+="</tr>";d.daily.forEach(function(x){{h+="<tr><td>"+x.day+"</td>";Object.keys(L).forEach(function(k){{var v=x[k];h+="<td>"+(v?(100*v.match_rate).toFixed(1)+"% <span class=u>of "+v.pairs.toLocaleString()+"</span>":"–")+"</td>"}});h+="</tr>"}});document.getElementById("accout").innerHTML=d.daily.length?h+"</table>":"No data yet."}}).catch(function(){{document.getElementById("accout").textContent="Track record unavailable right now."}})</script><script>document.getElementById("getkey").onclick=async function(){{var b=this,o=document.getElementById("keyout");b.disabled=true;b.textContent="Creating…";try{{var r=await fetch("https://toolweather.toolweather.workers.dev/v1/keys?source=web",{{method:"POST"}}),d=await r.json();o.style.display="block";o.textContent=r.ok?"Your key (shown once, copy it now):\\n"+d.api_key+"\\n\\nUse it as the X-API-Key header:\\n"+d.try:(d.message||"Something went wrong, please try again.");b.textContent=r.ok?"Key created":"Get a free key";if(!r.ok)b.disabled=false}}catch(e){{o.style.display="block";o.textContent="Network error, please try again.";b.disabled=false;b.textContent="Get a free key"}}}}</script><script>try{{fetch("https://toolweather.toolweather.workers.dev/v1/hit?p="+encodeURIComponent(location.pathname)+"&r="+encodeURIComponent(document.referrer),{{mode:"no-cors",keepalive:true}})}}catch(e){{}}</script></body></html>"""
 os.makedirs("site", exist_ok=True); open(OUT, "w").write(page); print("wrote", OUT, total, "servers")
