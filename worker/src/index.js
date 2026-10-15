@@ -420,10 +420,12 @@ export default {
     // always-paid lanes (no key, no quota), for x402 directories and agents that prefer to just pay
     if (p === "/x402/is_safe_to_call" || p === "/x402/live_check" || p === "/x402/suggest_alternatives") {
       const live = p === "/x402/live_check", alt = p.endsWith("alternatives");
+      let qb = {}; if (req.method === "POST") { try { qb = await req.clone().json(); } catch {} }
+      const qp = (k) => qb[k] ?? url.searchParams.get(k);
       const price = live ? PRICES.live : alt ? PRICES.alternatives : PRICES.check;
       track(env, ctx, p.slice(1), "x402", paymentHeader(req) ? "paid" : "challenge");
       return payHttp(req, env, price, live ? "forced live recheck of one MCP server" : alt ? "find healthy alternative MCP servers" : "health verdict for one MCP server", async () => {
-        const r = decorate(alt ? await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit")) : await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"), { ctx, fresh: live, paidLive: true, bearer: req.headers.get("x-upstream-authorization") }));
+        const r = decorate(alt ? await alternatives(env, qp("q") ?? qp("query"), qp("limit")) : await isSafe(env, qp("server"), qp("tool"), { ctx, fresh: live, paidLive: true, bearer: req.headers.get("x-upstream-authorization") }));
         return J(r, r.error ? 400 : 200);
       }, "Paid lane.");
     }

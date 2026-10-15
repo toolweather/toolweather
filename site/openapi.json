@@ -31,7 +31,8 @@
         }
       },
       "details": "https://toolweather.toolweather.workers.dev/v1/pricing"
-    }
+    },
+    "x-guidance": "Free: get a key with POST /v1/keys (1,000 calls/day). Pay-only lanes need no key: POST /x402/is_safe_to_call {server, tool?} ($0.002), POST /x402/live_check {server} ($0.005), POST /x402/suggest_alternatives {q} ($0.002), POST /x402/batch_check {servers:[...]} ($0.02). GET with query parameters works too."
   },
   "servers": [
     {
@@ -425,7 +426,19 @@
             "description": "Free quota used up, or pay-only lane: x402 v2 payment required. PAYMENT-REQUIRED header (base64) and a JSON body with accepts[]. Retry with PAYMENT-SIGNATURE."
           }
         },
-        "description": "Use before adding/calling a third-party MCP server or after its calls fail. Response starts with summary (one line), verdict (safe|caution|unsafe|unknown), recommended_action (call_it|call_with_care|use_alternative|verify_yourself), checked_at and freshness; all previous fields are kept. MCP tool: check_mcp_server_health (alias is_safe_to_call)."
+        "description": "Use before adding/calling a third-party MCP server or after its calls fail. Response starts with summary (one line), verdict (safe|caution|unsafe|unknown), recommended_action (call_it|call_with_care|use_alternative|verify_yourself), checked_at and freshness; all previous fields are kept. MCP tool: check_mcp_server_health (alias is_safe_to_call).",
+        "x-price-over-free-tier": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.002000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
+        }
       }
     },
     "/v1/suggest_alternatives": {
@@ -569,7 +582,19 @@
             "description": "Free quota used up, or pay-only lane: x402 v2 payment required. PAYMENT-REQUIRED header (base64) and a JSON body with accepts[]. Retry with PAYMENT-SIGNATURE."
           }
         },
-        "description": "Response starts with a one-line summary and checked_at, then ranked healthy servers. MCP tool: find_alternative_mcp_servers (alias suggest_alternatives)."
+        "description": "Response starts with a one-line summary and checked_at, then ranked healthy servers. MCP tool: find_alternative_mcp_servers (alias suggest_alternatives).",
+        "x-price-over-free-tier": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.002000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
+        }
       }
     },
     "/health": {
@@ -755,6 +780,18 @@
               }
             }
           }
+        },
+        "x-price-over-free-tier": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.050000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
         }
       },
       "get": {
@@ -930,11 +967,45 @@
         },
         "responses": {
           "200": {
-            "description": "Batch result"
+            "description": "Batch result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "required": [
+                    "summary",
+                    "results"
+                  ]
+                }
+              }
+            }
           },
           "402": {
             "description": "Free quota used up, or pay-only lane: x402 v2 payment required. PAYMENT-REQUIRED header (base64) and a JSON body with accepts[]. Retry with PAYMENT-SIGNATURE."
           }
+        },
+        "x-price-over-free-tier": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.020000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
         }
       }
     },
@@ -950,73 +1021,241 @@
       }
     },
     "/x402/is_safe_to_call": {
-      "get": {
-        "operationId": "x402_is_safe_to_call",
+      "post": {
+        "operationId": "x402_is_safe_to_call_post",
         "summary": "Pay-only lane, no key: health verdict ($0.002 via x402)",
-        "parameters": [
-          {
-            "name": "server",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Verdict"
+            "description": "Verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": [
+                        "safe",
+                        "caution",
+                        "unsafe",
+                        "unknown"
+                      ]
+                    },
+                    "recommended_action": {
+                      "type": "string"
+                    },
+                    "checked_at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "summary",
+                    "verdict"
+                  ]
+                }
+              }
+            }
           },
           "402": {
             "description": "Free quota used up, or pay-only lane: x402 v2 payment required. PAYMENT-REQUIRED header (base64) and a JSON body with accepts[]. Retry with PAYMENT-SIGNATURE."
+          }
+        },
+        "x-payment-info": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.002000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
+        },
+        "security": [],
+        "description": "Pay-only lane, no key: health verdict ($0.002 via x402). GET with the same fields as query parameters also works.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "server": {
+                    "type": "string",
+                    "description": "MCP server registry name or remote URL",
+                    "example": "com.ufcalendar/fight-api"
+                  },
+                  "tool": {
+                    "type": "string",
+                    "description": "Optional tool name to confirm"
+                  }
+                },
+                "required": [
+                  "server"
+                ]
+              }
+            }
           }
         }
       }
     },
     "/x402/live_check": {
-      "get": {
-        "operationId": "x402_live_check",
+      "post": {
+        "operationId": "x402_live_check_post",
         "summary": "Pay-only lane, no key: forced live recheck ($0.005 via x402)",
-        "parameters": [
-          {
-            "name": "server",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Verdict"
+            "description": "Verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": [
+                        "safe",
+                        "caution",
+                        "unsafe",
+                        "unknown"
+                      ]
+                    },
+                    "recommended_action": {
+                      "type": "string"
+                    },
+                    "checked_at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "summary",
+                    "verdict"
+                  ]
+                }
+              }
+            }
           },
           "402": {
             "description": "Free quota used up, or pay-only lane: x402 v2 payment required. PAYMENT-REQUIRED header (base64) and a JSON body with accepts[]. Retry with PAYMENT-SIGNATURE."
+          }
+        },
+        "x-payment-info": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.005000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
+        },
+        "security": [],
+        "description": "Pay-only lane, no key: forced live recheck ($0.005 via x402). GET with the same fields as query parameters also works.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "server": {
+                    "type": "string",
+                    "description": "MCP server registry name or remote URL",
+                    "example": "com.ufcalendar/fight-api"
+                  },
+                  "tool": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server"
+                ]
+              }
+            }
           }
         }
       }
     },
     "/x402/suggest_alternatives": {
-      "get": {
-        "operationId": "x402_suggest_alternatives",
+      "post": {
+        "operationId": "x402_suggest_alternatives_post",
         "summary": "Pay-only lane, no key: alternatives ($0.002 via x402)",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Alternatives"
+            "description": "Alternatives",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "type": "string"
+                    },
+                    "alternatives": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "required": [
+                    "summary",
+                    "alternatives"
+                  ]
+                }
+              }
+            }
           },
           "402": {
             "description": "Free quota used up, or pay-only lane: x402 v2 payment required. PAYMENT-REQUIRED header (base64) and a JSON body with accepts[]. Retry with PAYMENT-SIGNATURE."
+          }
+        },
+        "x-payment-info": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.002000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
+        },
+        "security": [],
+        "description": "Pay-only lane, no key: alternatives ($0.002 via x402). GET with the same fields as query parameters also works.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "q": {
+                    "type": "string",
+                    "description": "Capability text, or a server to replace",
+                    "example": "send email"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                },
+                "required": [
+                  "q"
+                ]
+              }
+            }
           }
         }
       }
@@ -1049,12 +1288,47 @@
         },
         "responses": {
           "200": {
-            "description": "Batch result"
+            "description": "Batch result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "required": [
+                    "summary",
+                    "results"
+                  ]
+                }
+              }
+            }
           },
           "402": {
             "description": "Free quota used up, or pay-only lane: x402 v2 payment required. PAYMENT-REQUIRED header (base64) and a JSON body with accepts[]. Retry with PAYMENT-SIGNATURE."
           }
-        }
+        },
+        "x-payment-info": {
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.020000"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
+        },
+        "security": []
       }
     }
   }
