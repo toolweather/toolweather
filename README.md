@@ -1,5 +1,7 @@
 # Toolweather
 
+[![Toolweather](https://toolweather.toolweather.workers.dev/badge/io.github.toolweather/toolweather.svg)](https://toolweather.pages.dev/servers/io.github.toolweather--toolweather/)
+
 **One connection gives you four tools.** Add `https://toolweather.toolweather.workers.dev/mcp` once.
 
 | | What you get | Tools |
