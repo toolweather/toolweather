@@ -12,7 +12,13 @@ for the 2026-07-28 spec, and whether it needs auth.
 
 ## Install
 
-Get a free key (1,000 calls/day) by emailing toolweather@mail.grokbot.com, then add the remote MCP server.
+Get a free key instantly (1,000 calls/day, 3 watches), no email or signup:
+
+```sh
+curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
+```
+
+or click **Get a free key** on https://toolweather.pages.dev, or call the `get_api_key` MCP tool (works without a key). The key is shown once. Limits: a few new keys per network per day, plus a global daily cap. Then add the remote MCP server.
 
 **Claude Desktop** (`claude_desktop_config.json`; uses the `mcp-remote` bridge):
 
@@ -77,12 +83,12 @@ the last tool change (and whether it was breaking), and `last_checked`.
 Free tier: 1,000 calls per key per day.
 
 > **Python users:** Cloudflare's `*.workers.dev` edge rejects Python's default `Python-urllib/x.y` User-Agent (error 1010). Send any descriptive User-Agent, e.g. `urllib.request.Request(url, headers={"User-Agent": "my-agent/1.0", "X-API-Key": key})`. `requests`, `httpx`, curl and Node work as-is.
- Email toolweather@mail.grokbot.com for a key.
+Get a key with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys`.
 
 ### MCP
 
 Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server with header `X-API-Key: <key>`.
-Tools: `is_safe_to_call(server, tool?)`, `suggest_alternatives(query, limit?)`, and change alerts:
+Tools: `get_api_key()` (no key needed), `is_safe_to_call(server, tool?)`, `suggest_alternatives(query, limit?)`, and change alerts:
 `watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`. The endpoint answers both
 2026-07-28 `server/discover` and legacy `initialize`.
 

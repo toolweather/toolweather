@@ -3,7 +3,7 @@
   "info": {
     "title": "Toolweather API",
     "version": "1.0.0",
-    "description": "Is this MCP server/tool safe to call right now? Live health verdicts for ~2,000 public MCP servers from the official registry, checked every 15 minutes, plus working alternatives. Free tier: 1,000 calls/day per key; email toolweather@mail.grokbot.com for a key. Change alerts: watch up to 3 servers per free key and receive signed HTTPS webhooks.",
+    "description": "Is this MCP server/tool safe to call right now? Live health verdicts for ~2,000 public MCP servers from the official registry, checked every 15 minutes, plus working alternatives. Free tier: 1,000 calls/day per key; get a key instantly with POST /v1/keys (no email or signup). Change alerts: watch up to 3 servers per free key and receive signed HTTPS webhooks.",
     "contact": {
       "email": "toolweather@mail.grokbot.com",
       "url": "https://toolweather.pages.dev"
@@ -730,6 +730,56 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/keys": {
+      "post": {
+        "operationId": "get_api_key",
+        "summary": "Create a free API key instantly (no auth). The key is returned once.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rest",
+                "web"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "api_key": {
+                      "type": "string"
+                    },
+                    "daily_limit": {
+                      "type": "integer"
+                    },
+                    "watches_limit": {
+                      "type": "integer"
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-network or global daily key-creation limit reached; retry tomorrow (UTC)"
           }
         }
       }

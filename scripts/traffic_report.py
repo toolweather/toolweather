@@ -71,6 +71,13 @@ def key_signals():
     print("Legend: trend = last 7d vs previous 7d; act/7 = active days in last 7; peak% = busiest day vs daily limit (30d);"
           " cap30 = calls rejected at cap (30d); churned = no calls in 14d; dormant = none in 7d.")
 
+def key_signups():
+    """Self-serve key creation by source (web / rest / mcp) and how often the per-network or global caps fired."""
+    d30 = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    print("\n=== Self-serve keys (30d) ===")
+    rs = rows("SELECT source, outcome, sum(n) n FROM keys_created WHERE day>=? GROUP BY 1,2 ORDER BY 1,2", [d30])
+    print(", ".join(f"{r['source']}/{r['outcome']}: {r['n']}" for r in rs) or "none")
+
 def watch_signals():
     """Change-alert usage: watches per key (free limit 3), limit hits, events and webhook delivery health."""
     d30 = (datetime.date.today() - datetime.timedelta(days=29)).isoformat()
@@ -90,4 +97,5 @@ def watch_signals():
 if __name__ == "__main__":
     for d in (7, 30): report(d)
     key_signals()
+    key_signups()
     watch_signals()

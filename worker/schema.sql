@@ -19,3 +19,5 @@ CREATE INDEX IF NOT EXISTS ix_watches_key ON watches(key_hash);
 CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY, watch_id TEXT, event TEXT, payload TEXT, created TEXT, attempts INT DEFAULT 0,
   next_attempt TEXT, state TEXT, last_http INT, last_error TEXT, delivered TEXT);
 CREATE INDEX IF NOT EXISTS ix_deliv_pending ON deliveries(state, next_attempt);
+CREATE TABLE IF NOT EXISTS key_signups(day TEXT, ih TEXT, n INT, PRIMARY KEY(day, ih));
+CREATE TABLE IF NOT EXISTS keys_created(day TEXT, source TEXT, outcome TEXT, n INT, PRIMARY KEY(day, source, outcome));

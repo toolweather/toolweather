@@ -21,6 +21,24 @@ async function gate(env, key) {
   if (u.n > k.daily_limit) return { ok: false, code: 429, h, msg: `free daily limit of ${k.daily_limit} reached` };
   return { ok: true, h, limit: k.daily_limit, remaining: k.daily_limit - u.n };
 }
+// ---- self-serve keys: per-IP (salted daily hash, raw IP never stored) and global daily caps ----
+const KEYS_PER_IP_DAY = 3, KEYS_GLOBAL_DAY = 300;
+// IPv6 clients often rotate within their /64, so bucket by /64 (IPv4: full address). Only the salted daily hash is stored.
+const netOf = (ip) => !ip ? "?" : ip.includes(":") ? ip.split(":").slice(0, 4).join(":") : ip;
+async function newKey(env, req, source) {
+  const day = new Date().toISOString().slice(0, 10);
+  const log = (o) => env.DB.prepare("INSERT INTO keys_created VALUES(?,?,?,1) ON CONFLICT(day,source,outcome) DO UPDATE SET n=n+1").bind(day, source, o).run().catch(() => {});
+  const ih = (await sha256(`keys|${day}|${env.SALT || "tw"}|${netOf(req.headers.get("cf-connecting-ip"))}`)).slice(0, 24);
+  const g = await env.DB.prepare("SELECT coalesce(sum(n),0) c FROM keys_created WHERE day=? AND outcome='created'").bind(day).first();
+  if (g.c >= KEYS_GLOBAL_DAY) { await log("global_cap"); return { code: 429, body: { error: "key_signups_paused", message: "We've hit today's limit for new free keys. Please try again tomorrow (UTC)." } }; }
+  const r = await env.DB.prepare("INSERT INTO key_signups VALUES(?,?,1) ON CONFLICT(day,ih) DO UPDATE SET n=n+1 RETURNING n").bind(day, ih).first();
+  if (r.n > KEYS_PER_IP_DAY) { await log("ip_cap"); return { code: 429, body: { error: "too_many_keys", message: `At most ${KEYS_PER_IP_DAY} new keys per network per day. Please reuse a key you already have, or try again tomorrow (UTC).` } }; }
+  const k = "tw_" + [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
+  await env.DB.prepare("INSERT INTO api_keys VALUES(?,?,?,?)").bind(await sha256(k), "self:" + source, 1000, day).run();
+  await log("created");
+  return { code: 201, body: { api_key: k, daily_limit: 1000, watches_limit: 3, note: "Shown once: store it now. Send it as the X-API-Key header (REST or /mcp).",
+    try: "curl -H 'X-API-Key: " + k + "' 'https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server=io.github.owner/name'" } };
+}
 const ORDER = { safe: 0, caution: 1, unsafe: 2 };
 function shape(r, tool) {
   let verdict = r.verdict, reasons = parse(r.reasons) || [];
@@ -70,6 +88,8 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { server: { type: "string" }, tool: { type: "string" } }, required: ["server"] } },
   { name: "suggest_alternatives", description: "Find working MCP servers with similar tools. query = a server name/URL, or capability text like 'send email'.",
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
+  { name: "get_api_key", description: "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). No key or email needed. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
+    inputSchema: { type: "object", properties: {} } },
   { name: "watch_server", description: "Get an HTTPS webhook when a server's verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free tier: 3 watches per key.",
     inputSchema: { type: "object", properties: { server: { type: "string", description: "registry name or URL" }, webhook_url: { type: "string", description: "public https URL" } }, required: ["server", "webhook_url"] } },
   { name: "list_watches", description: "List this API key's watches and their delivery health.", inputSchema: { type: "object", properties: {} } },
@@ -93,6 +113,11 @@ async function mcp(req, env, key, ctx) {
     case "ping": return ok({});
     case "tools/list": return ok({ tools: TOOLS });
     case "tools/call": {
+      if (params.name === "get_api_key") {
+        const r = await newKey(env, req, "mcp");
+        track(env, ctx, "get_api_key", "mcp", r.code === 201 ? "ok" : "rate_limited");
+        return ok({ isError: r.code !== 201, content: [{ type: "text", text: r.code === 201 ? `Your Toolweather API key (shown once): ${r.body.api_key}\n1,000 calls/day, 3 watches. Send it as the X-API-Key header.` : r.body.message }], structuredContent: r.body });
+      }
       const g = await gate(env, key || params.arguments?.api_key);
       track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["is_safe_to_call", "watch_server"].includes(params.name) ? params.arguments?.server : null);
@@ -167,6 +192,13 @@ export default {
         : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit"));
       return J(r, r.error ? 400 : 200, h);
     }
+    if (p === "/v1/keys") {
+      if (req.method !== "POST") return J({ error: "use POST /v1/keys" }, 405);
+      const src = url.searchParams.get("source") === "web" ? "web" : "rest";
+      const r = await newKey(env, req, src);
+      track(env, ctx, "keys.create", src === "web" ? "web" : "rest", r.code === 201 ? "ok" : "rate_limited");
+      return J(r.body, r.code, { "cache-control": "no-store" });
+    }
     if (p === "/v1/watches" || p.startsWith("/v1/watches/")) {
       const id = p.length > 12 ? decodeURIComponent(p.slice(12)) : null;
       const ep = id ? "watches.delete" : req.method === "POST" ? "watches.create" : "watches.list";
@@ -190,7 +222,7 @@ export default {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + rw}" height="20" role="img" aria-label="toolweather: ${txt}"><rect width="${lw}" height="20" rx="3" fill="#4b5563"/><rect x="${lw}" width="${rw}" height="20" rx="3" fill="${col}"/><rect x="${lw - 3}" width="6" height="20" fill="${col}"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="8" y="14">toolweather</text><text x="${lw + 6}" y="14">${txt}</text></g></svg>`;
       return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=300" } });
     }
-    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", endpoints: ["/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
+    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", endpoints: ["/v1/keys", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
   async scheduled(ev, env, ctx) { ctx.waitUntil(runAlerts(env)); },

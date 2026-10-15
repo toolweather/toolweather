@@ -16,7 +16,7 @@
       "headers": [
         {
           "name": "X-API-Key",
-          "description": "Free API key (1,000 calls/day). Email toolweather@mail.grokbot.com.",
+          "description": "Free API key (1,000 calls/day). Get one instantly: POST https://toolweather.toolweather.workers.dev/v1/keys or the get_api_key tool (no key needed).",
           "isRequired": true,
           "isSecret": true
         }
@@ -33,9 +33,11 @@
     "io.github.toolweather/links": {
       "openapi": "https://toolweather.toolweather.workers.dev/openapi.json",
       "llms_txt": "https://toolweather.pages.dev/llms.txt",
-      "status_page": "https://toolweather.pages.dev"
+      "status_page": "https://toolweather.pages.dev",
+      "get_key": "POST https://toolweather.toolweather.workers.dev/v1/keys"
     },
     "io.github.toolweather/tools": [
+      "get_api_key",
       "is_safe_to_call",
       "suggest_alternatives",
       "watch_server",
