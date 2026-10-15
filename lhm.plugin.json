@@ -1,8 +1,8 @@
 {
   "identifier": "toolweather-toolweather",
   "name": "Toolweather",
-  "version": "1.3.0",
-  "description": "Is this MCP server healthy and safe to call now? Live checks of ~2,000 servers + alternatives. Also checks AI/dev API status, model deprecations, and scores a planned spend before an agent pays (SpendGate).",
+  "version": "1.5.0",
+  "description": "Is this MCP server healthy and safe to call now? Live checks of ~2,000 servers + alternatives. Also checks AI/dev API status, model deprecations, scores a planned spend before an agent pays (SpendGate), and checks a merchant, host, or wallet before an agent pays (PayCheck).",
   "author": "toolweather",
   "authorUrl": "https://github.com/toolweather",
   "category": "developer",
@@ -90,7 +90,7 @@
     {
       "name": "get_api_key",
       "title": "Get a free Toolweather API key",
-      "description": "Mint one new Toolweather API key (tw_…) for health checks and watches on this server (1,000 calls/day, 3 watches). Use it once per install, then send that key as the X-API-Key header. Do not call it every turn, and do not use it when you need a SpendGate key (spendgate_get_api_key returns sg_live_…). Takes no arguments; the caller network is the limit. Each call creates a different secret. Returns api_key once, plus daily_limit and watches_limit; later calls cannot fetch it again. A few new keys per network per day, then reuse an existing key. Health checks also work with no key at 50 calls/day.",
+      "description": "Mint one new Toolweather API key (tw_…) for health checks and watches on this server (1,000 calls/day, 3 watches). Use it once per install, then send that key as the X-API-Key header. Do not call it every turn, and do not use it when you need a SpendGate key (spendgate_get_api_key returns sg_live_…) or a PayCheck key (paycheck_get_api_key returns pc_live_…). Takes no arguments; the caller network is the limit. Each call creates a different secret. Returns api_key once, plus daily_limit and watches_limit; later calls cannot fetch it again. A few new keys per network per day, then reuse an existing key. Health checks also work with no key at 50 calls/day.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -276,7 +276,7 @@
     {
       "name": "list_providers",
       "title": "List tracked API providers",
-      "description": "List the AI and developer API providers Upstream tracks, each with state (operational, degraded, or outage) and checked_at. Use to choose a provider id before check_api_status. Do not use it as an MCP health check (check_mcp_server_health) or as the change feed (list_recent_api_changes). No arguments. Returns the catalog only. Does not probe providers, spend a SpendGate score, or use the Toolweather check quota. Free.",
+      "description": "List the AI and developer API providers Upstream tracks, each with state (operational, degraded, or outage) and checked_at. Use to choose a provider id before check_api_status. Do not use it as an MCP health check (check_mcp_server_health), as the change feed (list_recent_api_changes), as a spend score (score_spend), or as a merchant check (check_merchant). No arguments. Returns the catalog only. Does not probe providers or use the Toolweather check quota. Free.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -313,7 +313,7 @@
     {
       "name": "score_spend",
       "title": "Score a planned spend before an agent pays",
-      "description": "Score one planned payment and return approve, ask_human, or block before any tool sends money. Use before a crypto transfer, gift card, subscription, or paid API call. Do not use it for uptime (check_mcp_server_health, check_api_status) or to read remaining free scores (get_quota). Does not transfer funds. Returns score 0-100, verdict (approve means pay, ask_human means stop and ask a person, block means do not pay), reasons, and recommended_action. Scoring is deterministic, so rewording purpose will not change the verdict. amount is USD, not token units. api_key, when set, is a SpendGate sg_live_ key, not a Toolweather tw_ key from get_api_key. Uses SpendGate's quota (100/day anonymous, 1,000/day with an sg_live_ key), then $0.001 via x402, not the Toolweather check quota.",
+      "description": "Score one planned payment and return approve, ask_human, or block before any tool sends money. Use before a crypto transfer, gift card, subscription, or paid API call. Do not use it for uptime (check_mcp_server_health, check_api_status), to judge whether a host or wallet is trusted (check_merchant), or to read remaining free scores (get_quota). Does not transfer funds. Returns score 0-100, verdict (approve means pay, ask_human means stop and ask a person, block means do not pay), reasons, and recommended_action. Scoring is deterministic, so rewording purpose will not change the verdict. amount is USD, not token units. api_key, when set, is a SpendGate sg_live_ key, not a Toolweather tw_ key from get_api_key. Uses SpendGate's quota (100/day anonymous, 1,000/day with an sg_live_ key), then $0.001 via x402, not the Toolweather check quota.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -381,7 +381,7 @@
     {
       "name": "get_quota",
       "title": "SpendGate free scores left today",
-      "description": "Read how many free SpendGate scores this caller has left today. Use before a run of score_spend calls. Do not use it for the Toolweather health-check quota, and do not use it to mint a key (spendgate_get_api_key or get_api_key). Does not consume a score and is not billed. Pass an sg_live_ key to read that key's cap; omit it only for the anonymous IP/session cap, which can reset on rotating egress. A tw_ key does not select this cap. Returns the remaining SpendGate count only.",
+      "description": "Read how many free SpendGate scores this caller has left today. Use before a run of score_spend calls. Do not use it for the Toolweather health-check quota, for PayCheck's merchant-check cap (paycheck_get_quota), or to mint a key (spendgate_get_api_key or get_api_key). Does not consume a score and is not billed. Pass an sg_live_ key to read that key's cap; omit it only for the anonymous IP/session cap, which can reset on rotating egress. A tw_ key does not select this cap. Returns the remaining SpendGate count only.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -416,6 +416,81 @@
       },
       "annotations": {
         "title": "Get SpendGate API key",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "check_merchant",
+      "title": "Check a merchant before an agent pays",
+      "description": "Decide whether an autonomous agent should pay one merchant, host, or wallet, and return trusted, unknown, suspicious, or block. Use immediately before a payment, a checkout redirect, or a transfer to a new 0x address. Do not use it to send money, to score a dollar amount (score_spend), or to read remaining checks (paycheck_get_quota). Does not sign transactions or hold wallet keys. target is a bare domain, an https URL, or a 0x address with 40 hex characters. amount_usd and category are ignored, so changing them does not change the verdict. trusted is only the published allowlist of known AI and developer APIs on https port 443. A new or random domain is never trusted. A wallet is never trusted. If the URL contains an embedded 0x address, this scores the host only; pass the bare address to score the wallet. api_key, when set, is a PayCheck pc_live_ key, not a Toolweather tw_ key from get_api_key and not a SpendGate sg_live_ key. Uses PayCheck's quota (100/day anonymous or an anon: bundle client, 1,000/day with a pc_live_ key or a hex Toolweather bundle client), then $0.001 via x402, not the Toolweather check quota. The same target for the same caller is idempotent for 60 seconds and does not consume a second check.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target"],
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Domain, https URL, or 0x wallet (40 hex characters) to score before paying. Not a dollar amount (score_spend) and not an MCP registry name."
+          },
+          "amount_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Ignored by the scorer. Sending a different amount cannot change the verdict. Not a SpendGate amount."
+          },
+          "category": {
+            "type": "string",
+            "description": "Ignored by the scorer. Do not put instructions or a purpose in this field. Not a SpendGate category."
+          },
+          "api_key": {
+            "type": "string",
+            "description": "Optional PayCheck key (pc_live_…). Not a Toolweather tw_ key and not a SpendGate sg_live_ key. Omit to use the anonymous or bundle-client allowance."
+          }
+        }
+      },
+      "annotations": {
+        "title": "Check merchant",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "paycheck_get_quota",
+      "title": "PayCheck free checks left today",
+      "description": "Read how many free PayCheck merchant checks this caller has left today. Use before a run of check_merchant calls, or after an HTTP 402. Do not use it for SpendGate's free-score cap (get_quota), the Toolweather health-check quota, or to mint a key (paycheck_get_api_key, spendgate_get_api_key, or get_api_key). Does not consume a check and is not billed. Pass a pc_live_ key to read that key's cap. A tw_ key does not select this cap. A hex x-tw-bundle-client (Toolweather key hash) is the 1,000/day tier; an anon: bundle client stays at 100/day. Returns subject_kind, limit, used, remaining, and resets_at for PayCheck only.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "Optional pc_live_ key from paycheck_get_api_key. Not a Toolweather tw_ key and not an sg_live_ key. Omit only to read the anonymous or bundle-client allowance."
+          }
+        }
+      },
+      "annotations": {
+        "title": "PayCheck quota",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "paycheck_get_api_key",
+      "title": "Get a free PayCheck API key",
+      "description": "Mint one new PayCheck API key (pc_live_…) for check_merchant and paycheck_get_quota. The key raises the merchant-check allowance from 100 to 1,000 per UTC day. Use it once, then pass the secret as api_key on those tools. Do not call it every turn, and do not use it when you need a Toolweather key (get_api_key returns tw_…) or a SpendGate key (spendgate_get_api_key returns sg_live_…). No arguments. Each call creates a different secret, returned once. Not billed, and not drawn from the Toolweather quota. Limited to 10 new keys per caller IP per UTC day.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "annotations": {
+        "title": "Get PayCheck API key",
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false,

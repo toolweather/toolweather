@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
   "name": "io.github.toolweather/toolweather",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "title": "Toolweather",
-  "description": "Toolweather suite: MCP server health (~2,000 servers), AI/dev API status (~40 providers), model deprecations, and SpendGate spend scoring before an agent pays. One MCP endpoint. Zero signup: 50 free/day anonymous or 1,000/day with a free key; heavier use pay-per-call via x402 (no subscription). SpendGate tools use SpendGate's own quota.",
+  "description": "Toolweather suite: MCP server health (~2,000 servers), AI/dev API status (~40 providers), model deprecations, SpendGate spend scoring before an agent pays, and PayCheck merchant checks before an agent pays a host or wallet. One MCP endpoint. Zero signup: 50 free/day anonymous or 1,000/day with a free key; heavier use pay-per-call via x402 (no subscription). SpendGate and PayCheck tools use each product's own quota.",
   "websiteUrl": "https://toolweather.pages.dev",
   "repository": {
     "url": "https://github.com/toolweather/toolweather",
@@ -37,12 +37,14 @@
       "get_key": "POST https://toolweather.toolweather.workers.dev/v1/keys",
       "upstream_api": "https://upstream.toolweather.workers.dev",
       "upstream_site": "https://upstream-api.pages.dev",
-      "spendgate_api": "https://spendgate.toolweather.workers.dev"
+      "spendgate_api": "https://spendgate.toolweather.workers.dev",
+      "paycheck_api": "https://paycheck.toolweather.workers.dev"
     },
     "io.github.toolweather/suite": [
       "mcp_health",
       "upstream_api_status",
-      "spendgate"
+      "spendgate",
+      "paycheck"
     ],
     "io.github.toolweather/tools": [
       "check_mcp_server_health",
@@ -58,7 +60,10 @@
       "get_digest",
       "score_spend",
       "get_quota",
-      "spendgate_get_api_key"
+      "spendgate_get_api_key",
+      "check_merchant",
+      "paycheck_get_quota",
+      "paycheck_get_api_key"
     ],
     "io.github.toolweather/tool_aliases": {
       "is_safe_to_call": "check_mcp_server_health",
@@ -67,7 +72,7 @@
       "get_model": "check_model_deprecation",
       "get_changes": "list_recent_api_changes"
     },
-    "io.github.toolweather/when_to_use": "Before adding/calling a third-party MCP server: check_mcp_server_health. Before calling an AI/dev API or after 5xx: check_api_status. Before hard-coding a model id: check_model_deprecation. Before an agent pays: score_spend (approve, ask_human, or block). get_quota is SpendGate's free-score cap. spendgate_get_api_key mints a SpendGate key; get_api_key mints a Toolweather key (renamed because the names collided). Every result starts with a one-line summary, verdict, recommended_action, checked_at and freshness.",
+    "io.github.toolweather/when_to_use": "Before adding/calling a third-party MCP server: check_mcp_server_health. Before calling an AI/dev API or after 5xx: check_api_status. Before hard-coding a model id: check_model_deprecation. Before an agent pays: score_spend (approve, ask_human, or block). get_quota is SpendGate's free-score cap. spendgate_get_api_key mints a SpendGate key; get_api_key mints a Toolweather key (renamed because the names collided). Before paying a merchant, host, or wallet: check_merchant (trusted, unknown, suspicious, or block). paycheck_get_quota is PayCheck's free-check cap (renamed because get_quota is SpendGate's). paycheck_get_api_key mints a PayCheck key. Anonymous bundle clients (anon:) stay at PayCheck's 100/day; a hex Toolweather client gets 1,000/day. Every result starts with a one-line summary, verdict, recommended_action, checked_at and freshness.",
     "io.toolweather/pricing": {
       "free": {
         "calls_per_day_per_key": 1000,

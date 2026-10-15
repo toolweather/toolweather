@@ -1,17 +1,19 @@
 # Toolweather
 
-**One connection gives you three tools.** Add `https://toolweather.toolweather.workers.dev/mcp` once.
+**One connection gives you four tools.** Add `https://toolweather.toolweather.workers.dev/mcp` once.
 
 | | What you get | Tools |
 | --- | --- | --- |
 | **MCP health** | Is this MCP server or tool safe to call right now? About 2,000 servers from the [official MCP registry](https://registry.modelcontextprotocol.io), probed every 15 minutes. | `check_mcp_server_health` · `find_alternative_mcp_servers` · `watch_server` · `list_watches` · `unwatch_server` · `get_api_key` |
 | **Upstream** | API status and model retirements, across about 40 providers. | `check_api_status` · `check_model_deprecation` · `list_recent_api_changes` · `list_providers` · `get_digest` |
 | **SpendGate** | `approve` / `ask_human` / `block` before an agent pays. | `score_spend` · `get_quota` · `spendgate_get_api_key` |
+| **PayCheck** | `trusted` / `unknown` / `suspicious` / `block` before an agent pays a merchant, host, or wallet. | `check_merchant` · `paycheck_get_quota` · `paycheck_get_api_key` |
 
 - Status page: https://toolweather.pages.dev
 - API / MCP: https://toolweather.toolweather.workers.dev/mcp
 - Upstream REST + x402 (still independent): https://upstream.toolweather.workers.dev · https://upstream-api.pages.dev
 - SpendGate REST + x402 (still independent): https://spendgate.toolweather.workers.dev
+- PayCheck REST + x402 (still independent): https://paycheck.toolweather.workers.dev
 - Contact: toolweather@mail.grokbot.com
 
 ## Install
@@ -202,6 +204,23 @@ anonymous, 1,000/day with a SpendGate key, then $0.001 per score via x402 (USDC 
 For a stable SpendGate daily cap through this bundle, call `get_api_key` first (a Toolweather key) or pass a
 SpendGate `sg_live_` key. Anonymous callers share IP/session-based caps that can reset on rotating egress.
 
+**PayCheck (proxied on the same MCP):** `check_merchant(target, api_key?)`, `paycheck_get_quota(api_key?)`,
+`paycheck_get_api_key()`. Call `check_merchant` before an agent pays a domain, https URL, or `0x` wallet.
+`trusted` means an allowlisted https API, `unknown` or `suspicious` means verify out of band, `block` means do not pay.
+PayCheck does not send money.
+
+PayCheck's own tool `get_api_key` is exposed here as `paycheck_get_api_key`. `get_api_key` already mints a
+Toolweather key. PayCheck's `get_quota` is exposed as `paycheck_get_quota` because `get_quota` stays SpendGate's
+free-score cap. `check_merchant` does not collide, so it keeps PayCheck's name. An `api_key` argument on these
+tools is a PayCheck key (`pc_live_…`), not a Toolweather key and not a SpendGate key. Send the Toolweather key
+as `X-API-Key` the same way as for the other suite tools.
+
+PayCheck tools do not consume the Toolweather call quota. They keep PayCheck's own limits: 100 checks/day
+anonymous or for an `anon:` bundle client, 1,000/day with a PayCheck key or a hex `x-tw-bundle-client`
+(a Toolweather key hash, or a stable MCP session hash), then $0.001 per check via x402 (USDC on Base).
+`paycheck_get_quota` and `paycheck_get_api_key` are not billed. PayCheck's own REST stays at
+https://paycheck.toolweather.workers.dev (`/v1/check`, `/v1/quota`, `/v1/keys`, `/mcp`).
+
 The endpoint answers both 2026-07-28 `server/discover` and legacy `initialize`.
 
 ### Change alerts (webhooks)
@@ -254,8 +273,8 @@ If you run an MCP server, here is exactly what we do:
 
 ## Toolweather suite architecture
 
-The public MCP at `toolweather…/mcp` lists MCP-health, Upstream, and SpendGate tools. Upstream and SpendGate
-tool calls are proxied to those Workers (same Cloudflare account; service binding `UPSTREAM` / `SPENDGATE`,
+The public MCP at `toolweather…/mcp` lists MCP-health, Upstream, SpendGate, and PayCheck tools. Upstream, SpendGate, and PayCheck
+tool calls are proxied to those Workers (same Cloudflare account; service binding `UPSTREAM` / `SPENDGATE` / `PAYCHECK`,
 HTTPS fallback to each worker's `/mcp`). When `BUNDLE_PROXY_SECRET` is set, the proxy sends `x-tw-bundle-secret`
 and `x-tw-bundle-client` (a hash of the caller, never the raw key, session id, or IP). Each product's own Worker, REST API,
 and x402 payment endpoints remain unchanged for existing clients.
@@ -264,11 +283,13 @@ and x402 payment endpoints remain unchanged for existing clients.
 
 - Toolweather free key (`plan === "free_key"`, hex without `anon:`): that key's existing sha256, unchanged.
 - Anonymous with an `Mcp-Session-Id` of 8–128 safe characters: `sha256("tw-mcp-session|" + session)` as 64 hex characters (no `anon:` prefix), so the cap stays on one client when cloud egress IPs rotate.
-- Anonymous with no session header: `anon:` plus the existing daily IP hash, so SpendGate can apply its anonymous limit.
+- Anonymous with no session header: `anon:` plus the existing daily IP hash, so SpendGate and PayCheck can apply the anonymous limit (100/day).
 
-Upstream's free-tier check only accepts `/^[a-f0-9]{16,128}$/i`. When the client id still has an `anon:` prefix, the proxy strips that prefix and forwards the same hash. SpendGate still receives the `anon:` form.
+Upstream's free-tier check only accepts `/^[a-f0-9]{16,128}$/i`. When the client id still has an `anon:` prefix, the proxy strips that prefix and forwards the same hash. SpendGate and PayCheck still receive the `anon:` form. PayCheck treats `anon:` as 100/day and a hex client as its keyed free tier (1,000/day).
 
 SpendGate's code is not in this repo. A call with an unrecognized secret is still anonymous on SpendGate, so per-client quota only works after SpendGate accepts the same secret Upstream does and keys its cap by `x-tw-bundle-client`. For a stable SpendGate daily cap through this bundle, call `get_api_key` first (Toolweather key) or pass a SpendGate `sg_live_…` key. Anonymous callers share IP/session-based caps that can reset on rotating egress.
+
+PayCheck's code is not in this repo. It receives the same `x-tw-bundle-secret` and `x-tw-bundle-client` headers as SpendGate. An `anon:` client stays at 100 checks/day. A hex client (a Toolweather key hash, or a stable MCP session hash) gets PayCheck's keyed free tier of 1,000/day. A PayCheck `pc_live_…` key passed as `api_key` selects that key's cap.
 
 ## How it works
 
