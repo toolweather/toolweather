@@ -223,6 +223,31 @@ const UP_TOOLS = [
   { name: "list_providers", title: "List tracked API providers", description: "List the ~40 AI and developer API providers Upstream tracks with their current state (operational/degraded/outage) and checked_at. Use to find the right provider id for check_api_status, or for a quick all-providers health overview. Free. Part of the Toolweather suite (Upstream).", inputSchema: { type: "object", properties: {} }, annotations: { title: "List providers", ...RO } },
   { name: "get_digest", title: "Daily AI/dev API breaking-changes digest", description: "Daily digest (free) of AI/dev API incidents, model deprecations/retirements, pricing-page changes and breaking MCP server changes. Use for a once-a-day catch-up instead of polling. Example: {} for the latest, or {\"date\":\"2026-10-14\"}. Part of the Toolweather suite (Upstream).", inputSchema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD; omit for the latest issue" } } }, annotations: { title: "Daily digest", ...RO } },
 ];
+// SpendGate's get_api_key is renamed: this server already exposes get_api_key for a Toolweather key.
+// get_quota and score_spend do not match any Toolweather tool, so they keep SpendGate's names.
+const SG_TOOLS = [
+  { name: "score_spend", title: "Score a planned spend before an agent pays",
+    description: `Score a planned payment before sending it. Call this before any tool that transfers crypto, buys a gift card, starts a subscription, or pays an API or merchant. Pass amount in USD, category, merchant or endpoint URL, and any daily or monthly budget still remaining. Returns score 0-100, verdict (approve | ask_human | block), reasons, and recommended_action. approve means pay; ask_human means stop and ask a person; block means do not pay. Do not reword the purpose and retry to fish for approve (v1 scoring is deterministic). Example: {"amount":12,"category":"api_call","merchant":"https://api.example.com","daily_budget_remaining":40}. Free within SpendGate's own quota (100/day anonymous, 1,000/day with a SpendGate key), then $0.001 via x402 (USDC on Base). Does not use the Toolweather call quota. Optional api_key is a SpendGate key (sg_live_…), not a Toolweather key. Part of the Toolweather suite (SpendGate).`,
+    inputSchema: { type: "object", additionalProperties: false, required: ["amount"], properties: {
+      amount: { type: "number", description: "Planned spend in USD, not in token atomic units." },
+      currency: { type: "string", description: "Payment currency. Defaults to USDC." },
+      category: { type: "string", description: "One of status_check, api_call, saas, infra, gift_card, crypto_transfer, irreversible. Unknown categories are scored as unknown risk." },
+      purpose: { type: "string", description: "Short human description. Used as the category when category is omitted." },
+      merchant: { type: "string", description: "Merchant name or https endpoint URL that will receive the spend." },
+      endpoint: { type: "string", description: "Alias of merchant when the payee is an API URL." },
+      agent_id: { type: "string", description: "Your agent or key id. Echoed, not scored in v1." },
+      api_key: { type: "string", description: "Optional SpendGate key (sg_live_…). Not a Toolweather key. Anonymous callers share a smaller daily cap." },
+      daily_budget_remaining: { type: "number", description: "USD still available today. Amount above this is blocked." },
+      monthly_budget_remaining: { type: "number", description: "USD still available this month. Amount above this is blocked." },
+      risk_hints: { type: "array", items: { type: "string" }, description: "Self-reported hints. Raising: new_payee, new_merchant, first_payment, high_velocity, mismatched_purpose, off_platform, shared_wallet. Lowering: trusted_repeat, within_policy, human_preapproved. known_merchant marks the payee known." },
+    } }, annotations: { title: "Score a planned spend", ...RO } },
+  { name: "get_quota", title: "SpendGate free scores left today",
+    description: "Read how many free SpendGate scores remain today for this anonymous caller or SpendGate API key. Does not consume a score, is not billed, and does not use the Toolweather call quota. This is SpendGate's cap, not Toolweather's daily check quota. Optional api_key is a SpendGate key (sg_live_…). Part of the Toolweather suite (SpendGate).",
+    inputSchema: { type: "object", additionalProperties: false, properties: { api_key: { type: "string", description: "Optional sg_live_ key. Omit to read the anonymous quota for this client." } } }, annotations: { title: "SpendGate quota", ...RO } },
+  { name: "spendgate_get_api_key", title: "Get a free SpendGate API key",
+    description: "Mint a free SpendGate API key (sg_live_…). The secret is returned once. Store it and pass it as the api_key argument on later score_spend or get_quota calls. Do not call this on every turn. This is SpendGate's get_api_key, renamed to spendgate_get_api_key because get_api_key on this server mints a Toolweather key (tw_…). Not billed. Part of the Toolweather suite (SpendGate).",
+    inputSchema: { type: "object", additionalProperties: false, properties: { label: { type: "string", description: "Optional label stored with the key, up to 80 characters." } } }, annotations: { title: "Get SpendGate API key", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+];
 const TOOLS = [
   { name: "check_mcp_server_health", title: "Is this MCP server healthy / safe to call right now?",
     description: "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Free: 1,000 calls/day per key or 50/day anonymous with no key (200 live rechecks/key); over quota $0.001 per call via x402 (USDC on Base). Alias: is_safe_to_call.",
@@ -238,27 +263,46 @@ const TOOLS = [
   { name: "unwatch_server", title: "Stop watching a server", description: "Delete one of your watches by id (from list_watches).", inputSchema: { type: "object", properties: { id: { type: "string", description: "Watch id, e.g. w_abc123" } }, required: ["id"] }, annotations: { title: "Delete watch", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } },
   { ...BATCH_TOOL, annotations: { title: "Batch health check", ...RO } },
   ...UP_TOOLS,
+  ...SG_TOOLS,
 ];
 const ALIAS = { is_safe_to_call: "check_mcp_server_health", suggest_alternatives: "find_alternative_mcp_servers", get_status: "check_api_status", get_model: "check_model_deprecation", get_changes: "list_recent_api_changes" };
-const UP_NAMES = new Set(UP_TOOLS.map((t) => t.name));
-const UP_URL = "https://upstream.toolweather.workers.dev";
-async function proxyUpstream(env, name, args, meta, clientId) {
-  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args || {}, ...(meta ? { _meta: meta } : {}) } });
-  const headers = { "content-type": "application/json", "user-agent": "toolweather-suite/0.3", accept: "application/json" };
+const SUITE = {
+  upstream: { binding: "UPSTREAM", url: "https://upstream.toolweather.workers.dev" },
+  spendgate: { binding: "SPENDGATE", url: "https://spendgate.toolweather.workers.dev" },
+};
+const SG_REMOTE = { spendgate_get_api_key: "get_api_key" };
+const SUITE_PROXY = new Map([
+  ...UP_TOOLS.map((t) => [t.name, { id: "upstream", remote: t.name }]),
+  ...SG_TOOLS.map((t) => [t.name, { id: "spendgate", remote: SG_REMOTE[t.name] || t.name }]),
+]);
+const UP_URL = SUITE.upstream.url;
+const SG_URL = SUITE.spendgate.url;
+async function proxySuite(env, id, remoteName, args, meta, clientId) {
+  const cfg = SUITE[id];
+  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: remoteName, arguments: args || {}, ...(meta ? { _meta: meta } : {}) } });
+  const headers = { "content-type": "application/json", "user-agent": "toolweather-suite/0.5", accept: "application/json" };
   if (env.BUNDLE_PROXY_SECRET && clientId) {
     headers["x-tw-bundle-secret"] = env.BUNDLE_PROXY_SECRET;
     headers["x-tw-bundle-client"] = clientId;
   }
   const init = { method: "POST", headers, body };
+  const endpoint = cfg.url + "/mcp";
   let r;
-  if (env.UPSTREAM && typeof env.UPSTREAM.fetch === "function") {
-    try { r = await env.UPSTREAM.fetch(new Request(UP_URL + "/mcp", init)); }
+  const binding = env[cfg.binding];
+  if (binding && typeof binding.fetch === "function") {
+    try { r = await binding.fetch(new Request(endpoint, init)); }
     catch { r = null; }
+    // A disconnected binding answers 503 with a non-JSON body. Use it only when it returned JSON-RPC; otherwise HTTPS.
+    if (r) {
+      let j = null; try { j = await r.clone().json(); } catch { j = null; }
+      if (!j || (j.jsonrpc !== "2.0" && !("result" in j) && !("error" in j))) r = null;
+    }
   }
-  if (!r) r = await fetch(UP_URL + "/mcp", init);
-  let j; try { j = await r.json(); } catch { return { isError: true, content: [{ type: "text", text: "Upstream proxy failed (bad JSON)" }], structuredContent: { error: "upstream_proxy_failed", status: r.status } }; }
-  if (j.error) return { isError: true, content: [{ type: "text", text: j.error.message || "upstream error" }], structuredContent: j.error };
-  return j.result || { isError: true, content: [{ type: "text", text: "empty upstream result" }] };
+  if (!r) r = await fetch(endpoint, init);
+  const label = id === "upstream" ? "Upstream" : "SpendGate";
+  let j; try { j = await r.json(); } catch { return { isError: true, content: [{ type: "text", text: `${label} proxy failed (bad JSON)` }], structuredContent: { error: `${id}_proxy_failed`, status: r.status } }; }
+  if (j.error) return { isError: true, content: [{ type: "text", text: j.error.message || `${id} error` }], structuredContent: j.error };
+  return j.result || { isError: true, content: [{ type: "text", text: `empty ${id} result` }] };
 }
 function decorate(r) {
   if (!r || r.error) return r;
@@ -270,8 +314,8 @@ function decorate(r) {
   return { summary: `${n}: ${(r.verdict || "unknown").toUpperCase()}${why ? " (" + why + ")" : ""}. ${txt}`, verdict: r.verdict, recommended_action: act,
     checked_at: r.checked_at || r.last_checked || null, freshness: { age_seconds: age, fresh: age != null && age <= FRESH_S, source: r.source || "scheduled_probe" }, ...r };
 }
-const INFO = { name: "toolweather", title: "Toolweather", version: "0.4.0" };
-const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. Zero signup: call with no key (50 free/day anonymous) or get_api_key (1,000/day, 3 watches). Over the free quota, tools return an x402 payment requirement in _meta[\"x402/payment-required\"] (USDC on Base, $0.001 per check, pay-per-call, no subscription); retry with params._meta[\"x402/payment\"]. Every result starts with a one-line summary.";
+const INFO = { name: "toolweather", title: "Toolweather", version: "0.5.0" };
+const INSTR = "Toolweather suite: MCP health + AI/dev API status + model deprecations + spend scoring. Use check_mcp_server_health before adding/calling a third-party MCP server; if unsafe, use find_alternative_mcp_servers. Use check_api_status before calling an AI/dev API or after 5xx/timeouts; check_model_deprecation before using a model id; list_recent_api_changes / get_digest for what changed. Before an agent pays, transfers crypto, buys a gift card, or starts a paid subscription, call score_spend (approve = pay, ask_human = stop and ask a person, block = do not pay). get_quota reads SpendGate's free daily cap. spendgate_get_api_key mints a SpendGate key; get_api_key mints a Toolweather key. Zero signup: call with no key (50 free/day anonymous) or get_api_key (1,000/day, 3 watches). Over the free quota, tools return an x402 payment requirement in _meta[\"x402/payment-required\"] (USDC on Base, $0.001 per check, pay-per-call, no subscription); retry with params._meta[\"x402/payment\"]. SpendGate tools use SpendGate's own quota and prices. Every result starts with a one-line summary.";
 async function mcp(req, env, key, ctx) {
   let msg; try { msg = await req.json(); } catch { return J({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   if (Array.isArray(msg)) return J({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batch not supported" } }, 400);
@@ -295,13 +339,14 @@ async function mcp(req, env, key, ctx) {
         track(env, ctx, "get_api_key", "mcp", r.code === 201 ? "ok" : "rate_limited");
         return ok({ isError: r.code !== 201, content: [{ type: "text", text: r.code === 201 ? `Your Toolweather API key (shown once): ${r.body.api_key}\n1,000 calls/day, 3 watches (or 50/day with no key). Send it as the X-API-Key header.` : r.body.message }], structuredContent: r.body });
       }
-      const isUp = UP_NAMES.has(params.name), pay = params._meta?.["x402/payment"];
+      const via = SUITE_PROXY.get(params.name), pay = params._meta?.["x402/payment"];
       const units = params.name === "batch_check_mcp_servers" ? Math.min(Math.max((params.arguments?.servers || []).length, 1), BATCH_MAX) : 1;
-      const keyOrArg = key || params.arguments?.api_key;
+      // SpendGate's api_key argument is an sg_live_ key, not a Toolweather key.
+      const keyOrArg = via?.id === "spendgate" ? key : (key || params.arguments?.api_key);
       if (["watch_server", "list_watches", "unwatch_server"].includes(params.name) && !keyOrArg) {
         return ok({ isError: true, content: [{ type: "text", text: "watch tools need an API key. Call get_api_key first (free, instant: 1,000 calls/day, 3 watches)." }] });
       }
-      const counts = !isUp && !pay && !["list_watches", "unwatch_server", "watch_server"].includes(params.name);
+      const counts = !via && !pay && !["list_watches", "unwatch_server", "watch_server"].includes(params.name);
       const g = await gate(env, keyOrArg, counts ? units : false, req);
       track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       trackKey(env, ctx, g, String(params.name || "?").slice(0, 40), "mcp", ["check_mcp_server_health", "watch_server"].includes(params.name) ? params.arguments?.server : null);
@@ -320,10 +365,7 @@ async function mcp(req, env, key, ctx) {
       };
       if (MP[params.name] && (pay || g.over)) return ok(await payMcp(req, env, params.name, MP[params.name], pay, () => runTool(true), g.msg || "Paid call."));
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
-      if (isUp) {
-        const proxied = await proxyUpstream(env, params.name, a, params._meta, g.h);
-        return ok(proxied);
-      }
+      if (via) return ok(await proxySuite(env, via.id, via.remote, a, params._meta, g.h));
       if (MP[params.name]) return ok(await runTool(false));
       let r;
       if (params.name === "watch_server") {
@@ -451,7 +493,7 @@ export default {
       }, "Paid lane.");
     }
     if (p === "/.well-known/x402") return J({ version: 1, resources: ["/x402/is_safe_to_call?server={server}", "/x402/live_check?server={server}", "/x402/suggest_alternatives?q={q}", "/x402/batch_check"].map((x) => url.origin + x), pricing: PAY_INFO(env) }, 200, { "cache-control": "max-age=3600" });
-    if (p === "/v1/pricing") return J({ free: { calls_per_day_per_key: FREE_KEY_DAILY, anonymous_per_day: FREE_ANON_DAILY, live_rechecks_per_day: LIVE_PER_KEY_DAY, watches: FREE_WATCHES, key: "POST /v1/keys (instant, no signup)", no_key: `${FREE_ANON_DAILY}/day anonymous` }, ...PAY_INFO(env), notes: ["Zero signup: start with no key (anonymous free tier) or POST /v1/keys.", "Pay-per-call only via x402 (USDC on Base); no subscription.", "You are never charged for errors.", "Upstream tools in this bundle keep Upstream's own free quota and prices."] }, 200, { "cache-control": "max-age=3600" });
+    if (p === "/v1/pricing") return J({ free: { calls_per_day_per_key: FREE_KEY_DAILY, anonymous_per_day: FREE_ANON_DAILY, live_rechecks_per_day: LIVE_PER_KEY_DAY, watches: FREE_WATCHES, key: "POST /v1/keys (instant, no signup)", no_key: `${FREE_ANON_DAILY}/day anonymous` }, ...PAY_INFO(env), notes: ["Zero signup: start with no key (anonymous free tier) or POST /v1/keys.", "Pay-per-call only via x402 (USDC on Base); no subscription.", "You are never charged for errors.", "Upstream tools in this bundle keep Upstream's own free quota and prices.", "SpendGate tools in this bundle keep SpendGate's own free quota and prices (100/day anonymous, 1,000/day per SpendGate key, then $0.001 per score). get_api_key is a Toolweather key; a SpendGate key is spendgate_get_api_key."] }, 200, { "cache-control": "max-age=3600" });
     if (p === "/v1/accuracy") {
       const { results } = await env.DB.prepare("SELECT * FROM accuracy_daily ORDER BY day DESC, verdict LIMIT 300").all();
       const days = {}, tot = {};
@@ -504,7 +546,7 @@ export default {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + rw}" height="20" role="img" aria-label="toolweather: ${txt}"><rect width="${lw}" height="20" rx="3" fill="#4b5563"/><rect x="${lw}" width="${rw}" height="20" rx="3" fill="${col}"/><rect x="${lw - 3}" width="6" height="20" fill="${col}"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="8" y="14">toolweather</text><text x="${lw + 6}" y="14">${txt}</text></g></svg>`;
       return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=300" } });
     }
-    if (p === "/") return J({ name: "Toolweather", suite: ["mcp_health", "upstream_api_status"], what: "One MCP for MCP server health (~2,000 servers), AI/dev API status (~40 providers), and model deprecations.", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", mcp_tools: TOOLS.map((t) => t.name), upstream_api: UP_URL, pricing: "/v1/pricing", x402: "/.well-known/x402", endpoints: ["/v1/keys", "/v1/pricing", "/v1/batch_check", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
+    if (p === "/") return J({ name: "Toolweather", suite: ["mcp_health", "upstream_api_status", "spendgate"], what: "One MCP for MCP server health (~2,000 servers), AI/dev API status (~40 providers), model deprecations, and spend scoring before an agent pays.", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", mcp_tools: TOOLS.map((t) => t.name), upstream_api: UP_URL, spendgate_api: SG_URL, renamed_tools: { spendgate_get_api_key: "SpendGate get_api_key. get_api_key stays Toolweather's key. get_quota is not renamed; no Toolweather tool uses that name." }, pricing: "/v1/pricing", x402: "/.well-known/x402", endpoints: ["/v1/keys", "/v1/pricing", "/v1/batch_check", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
   async scheduled(ev, env, ctx) {

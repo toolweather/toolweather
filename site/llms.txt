@@ -1,6 +1,6 @@
 # Toolweather
 
-> Toolweather is a suite for AI agents: (1) MCP server health — whether an MCP server or tool is safe to call right now, with working alternatives (~2,000 remote MCP servers from the official MCP registry, probed every 15 minutes); (2) Upstream — whether an AI/dev API is down, whether a model is deprecated and what replaces it (~40 providers). One MCP endpoint. Checks are read-only: tools are never called.
+> Toolweather is a suite for AI agents: (1) MCP server health — whether an MCP server or tool is safe to call right now, with working alternatives (~2,000 remote MCP servers from the official MCP registry, probed every 15 minutes); (2) Upstream — whether an AI/dev API is down, whether a model is deprecated and what replaces it (~40 providers); (3) SpendGate — whether a planned spend should be approved, escalated to a human, or blocked. One MCP endpoint. Health checks are read-only: those tools are never called. SpendGate scores a planned payment; it does not send it.
 
 Free tier: 1,000 calls per API key per day, or 50/day anonymous with no key. Get a key instantly, no email or signup: `POST https://toolweather.toolweather.workers.dev/v1/keys` (returns `api_key`, shown once), or call the MCP tool `get_api_key` without a key.
 
@@ -19,18 +19,20 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 - "Is this AI/dev API down?" Before calling OpenAI/Anthropic/GitHub/Stripe/… or after 5xx/timeouts: `check_api_status(provider)` (alias `get_status`).
 - "Is this model deprecated, what replaces it?": `check_model_deprecation(model)` (alias `get_model`).
 - "What changed recently?": `list_recent_api_changes` / `get_digest` / `list_providers`.
-- Every answer starts with a one-line `summary`, then `verdict`, `recommended_action`, `checked_at` and `freshness`.
+- "Should this agent pay?": before a crypto transfer, gift card, subscription, or paid API call, `score_spend(amount, category?, merchant?, daily_budget_remaining?)`. Verdicts: `approve` (pay), `ask_human` (stop and ask a person), `block` (do not pay). `get_quota` reads SpendGate's free scores left today. `spendgate_get_api_key` mints a SpendGate key. `get_api_key` stays Toolweather's key; SpendGate's key tool was renamed because the names collided. `get_quota` did not collide, so it keeps SpendGate's name.
+- Every health or status answer starts with a one-line `summary`, then `verdict`, `recommended_action`, `checked_at` and `freshness`. `score_spend` returns `verdict` `approve` | `ask_human` | `block`.
 - Old tool names `is_safe_to_call`, `suggest_alternatives`, `get_status`, `get_model`, `get_changes` still work.
 
 ## Use it
 
 - Auth-gated servers: verdicts include `auth.state` = `auth_ok` (OAuth login flow reachable: RFC 9728 + RFC 8414 metadata resolve, authorization and token endpoints answer over TLS; `dynamic_client_registration` says if registration is open), `auth_suspect` (endpoints reachable but one returned a 5xx to a parameter-less check; caution), `auth_broken` (OAuth advertised but metadata missing or an endpoint unreachable/TLS fails; verdict unsafe because new logins will fail) or `auth_opaque` (credentials needed, no OAuth discovery). Pass your own token as header `X-Upstream-Authorization: Bearer <token>` (REST) or `bearer_token` (MCP) for a one-off authenticated initialize + tools/list check; the token is never stored or logged.
-- [MCP endpoint (streamable HTTP)](https://toolweather.toolweather.workers.dev/mcp): tools `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`), `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), `watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`, plus Upstream suite tools `check_api_status`, `check_model_deprecation`, `list_recent_api_changes`, `list_providers`, `get_digest`. Send header `X-API-Key: <key>`. Answers 2026-07-28 `server/discover` and legacy `initialize`.
+- [MCP endpoint (streamable HTTP)](https://toolweather.toolweather.workers.dev/mcp): tools `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`), `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), `watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`, plus Upstream suite tools `check_api_status`, `check_model_deprecation`, `list_recent_api_changes`, `list_providers`, `get_digest`, plus SpendGate suite tools `score_spend`, `get_quota`, `spendgate_get_api_key`. Send header `X-API-Key: <key>`. Answers 2026-07-28 `server/discover` and legacy `initialize`.
 - [REST: is_safe_to_call](https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server=io.github.owner/name): returns `verdict` (safe / caution / unsafe / unknown), reasons, status, latency, auth info, last tool change, `checked_at`, `age_seconds`. Add `fresh=true` to force a live handshake; checks older than 5 minutes are re-verified live automatically (200 live checks/key/day).
 - [Track record](https://toolweather.toolweather.workers.dev/v1/accuracy): daily share of verdicts that matched the next scheduled check of the same server (stability between checks, not tool-call success). No key needed.
 - [REST: suggest_alternatives](https://toolweather.toolweather.workers.dev/v1/suggest_alternatives?q=send%20email): working servers with similar tools.
 - REST: change alerts. `POST /v1/watches {"server","webhook_url"}`, `GET /v1/watches`, `DELETE /v1/watches/{id}`. Toolweather POSTs JSON to your https webhook when a watched server's verdict changes, it starts requiring auth, or its tool list has a breaking change (checked every 5 minutes against 15-minute probes). Verify `X-Toolweather-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>` with the secret returned at creation. Free tier: 3 watches per key.
 - Upstream REST + x402 (paid over free quota) stays on its own host: https://upstream.toolweather.workers.dev (`/status/:provider`, `/model/:id`, `/changes`, `/x402/*`, `/digest/latest`).
+- SpendGate REST + x402 stays on its own host: https://spendgate.toolweather.workers.dev (`/v1/score`, `/v1/quota`, `/v1/keys`, `/mcp`). Suite calls are proxied; SpendGate's own prices apply (100 scores/day anonymous, 1,000/day per SpendGate key, then $0.001). An `api_key` argument on `score_spend` / `get_quota` is a SpendGate `sg_live_…` key, not a Toolweather key.
 - [OpenAPI 3.1 spec](https://toolweather.toolweather.workers.dev/openapi.json)
 - [MCP server card](https://toolweather.toolweather.workers.dev/.well-known/mcp)
 
@@ -40,6 +42,7 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 - [Live status page](https://toolweather.pages.dev)
 - [Official MCP registry entry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.toolweather%2Ftoolweather/versions/latest): `io.github.toolweather/toolweather`
 - Sister Upstream site: https://upstream-api.pages.dev
+- SpendGate: https://spendgate.toolweather.workers.dev
 
 ## Daily digest
 
@@ -62,3 +65,4 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 - Headers on every metered response: X-Free-Remaining, X-RateLimit-Limit, X-RateLimit-Remaining, X-Price-After-Free; body field "quota" (plan, free_remaining, price_after_free_usd, resets).
 - Pay-only lanes (no key): POST (JSON body) or GET (query) /x402/is_safe_to_call {server}, /x402/live_check {server}, /x402/suggest_alternatives {q}; POST /x402/batch_check {servers}. Index: https://toolweather.toolweather.workers.dev/.well-known/x402 · https://toolweather.toolweather.workers.dev/v1/pricing
 - Upstream tools in the bundle keep Upstream's own quota and prices.
+- SpendGate tools in the bundle keep SpendGate's own quota and prices (100/day anonymous, 1,000/day per SpendGate key, then $0.001 per score). They do not use Toolweather's 50/1,000 call quota. `get_quota` and `spendgate_get_api_key` are not billed.

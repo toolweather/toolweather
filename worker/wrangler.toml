@@ -14,6 +14,10 @@ database_id = "f3fca32f-f22b-4227-a860-7bccf8295a76"
 binding = "UPSTREAM"
 service = "upstream"
 
+[[services]]
+binding = "SPENDGATE"
+service = "spendgate"
+
 [triggers]
 crons = ["*/5 * * * *"]
 

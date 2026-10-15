@@ -4,10 +4,12 @@
 
 1. **MCP health** — is this MCP server/tool safe to call right now? (~2,000 servers from the [official MCP registry](https://registry.modelcontextprotocol.io), probed every 15 minutes: uptime, latency, breaking tool changes, 2026-07-28 spec readiness, auth).
 2. **Upstream** — is this AI/dev API down? is this model deprecated, and what replaces it? (~40 providers).
+3. **SpendGate** — should this agent pay? Score a planned spend before crypto, gift cards, subscriptions, or paid APIs (`approve` / `ask_human` / `block`).
 
 - Status page: https://toolweather.pages.dev
 - API / MCP: https://toolweather.toolweather.workers.dev/mcp
 - Upstream REST + x402 (still independent): https://upstream.toolweather.workers.dev · https://upstream-api.pages.dev
+- SpendGate REST + x402 (still independent): https://spendgate.toolweather.workers.dev
 - Contact: toolweather@mail.grokbot.com
 
 ## Install
@@ -112,6 +114,20 @@ Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server wit
 `list_providers()`, `get_digest(date?)`. Over Upstream's free quota these return an x402 payment requirement
 (USDC on Base); Upstream's own REST `/x402/*` endpoints stay live for clients that pay directly.
 
+**SpendGate (proxied on the same MCP):** `score_spend(amount, category?, merchant?, daily_budget_remaining?, ...)`,
+`get_quota(api_key?)`, `spendgate_get_api_key(label?)`. Call `score_spend` before an agent pays.
+`approve` means pay, `ask_human` means stop and ask a person, `block` means do not pay.
+
+SpendGate's own tool `get_api_key` is exposed here as `spendgate_get_api_key`. `get_api_key` already mints a
+Toolweather key (`tw_…`, 1,000 checks/day). `get_quota` does not match any Toolweather tool, so it keeps
+SpendGate's name and means SpendGate's free scores, not Toolweather's daily check quota. `score_spend` is unchanged.
+An `api_key` argument on these tools is a SpendGate key (`sg_live_…`), not a Toolweather key. Send the Toolweather
+key as `X-API-Key` the same way as for the other suite tools.
+
+SpendGate tools do not consume the Toolweather call quota. They keep SpendGate's own limits: 100 scores/day
+anonymous, 1,000/day with a SpendGate key, then $0.001 per score via x402 (USDC on Base). `get_quota` and
+`spendgate_get_api_key` are not billed. SpendGate's own REST stays at https://spendgate.toolweather.workers.dev.
+
 The endpoint answers both 2026-07-28 `server/discover` and legacy `initialize`.
 
 ### Change alerts (webhooks)
@@ -164,9 +180,16 @@ If you run an MCP server, here is exactly what we do:
 
 ## Toolweather suite architecture
 
-The public MCP at `toolweather…/mcp` lists both MCP-health and Upstream tools. Upstream tool calls are
-proxied to the Upstream Worker (same Cloudflare account; service binding with HTTP fallback). Upstream's
-own Worker, REST API, digests and x402 payment endpoints remain unchanged for existing clients.
+The public MCP at `toolweather…/mcp` lists MCP-health, Upstream, and SpendGate tools. Upstream and SpendGate
+tool calls are proxied to those Workers (same Cloudflare account; service binding `UPSTREAM` / `SPENDGATE`,
+HTTPS fallback to each worker's `/mcp`). When `BUNDLE_PROXY_SECRET` is set, the proxy sends `x-tw-bundle-secret`
+and `x-tw-bundle-client` (a hash of the caller, not the raw key or IP). Each product's own Worker, REST API,
+and x402 payment endpoints remain unchanged for existing clients.
+
+Toolweather already sends those headers when `BUNDLE_PROXY_SECRET` is set. SpendGate's code is not in this
+repo. A call with an unrecognized secret is still anonymous on SpendGate, so per-client quota only works after
+SpendGate accepts the same secret Upstream does and keys its cap by `x-tw-bundle-client`. Until then, pass an
+`sg_live_…` key as `api_key`, or callers share SpendGate's anonymous bucket for traffic from this Worker.
 
 ## How it works
 
