@@ -18,13 +18,13 @@
     {
       "name": "check_mcp_server_health",
       "title": "Is this MCP server healthy / safe to call right now?",
-      "description": "Check if a remote MCP server (by registry name or URL), and optionally one specific tool on it, is up, healthy and safe to call right now. Use BEFORE adding or calling a third-party MCP server, or after its calls fail/time out, to decide: call it, call with care, or switch to an alternative. Covers ~2,000 public servers from the official MCP registry, probed every 15 min; results older than 5 min are re-verified with a live handshake. Returns a one-line summary first, then verdict (safe | caution | unsafe | unknown), recommended_action, reasons, latency, auth requirement, last breaking tool change, checked_at and freshness. Example: {\"server\":\"com.ufcalendar/fight-api\",\"tool\":\"search\"}. Alias: is_safe_to_call.",
+      "description": "Read whether one remote MCP server, and optionally one tool on it, is safe to call right now. Use before adding or calling that server, or after its calls fail or time out. Do not use it to search by capability (find_alternative_mcp_servers), to vet a list (batch_check_mcp_servers; stored verdicts only), or to subscribe to later outages (watch_server). A result older than 5 minutes, or fresh/bearer_token, runs one read-only initialize and spends a live-check credit (200/day, then the cache). Counts on the Toolweather quota (1,000/key or 50/day anonymous). Returns summary, verdict (safe|caution|unsafe|unknown), recommended_action (call_it|call_with_care|use_alternative|verify_yourself), reasons, latency_ms, auth, last_tool_change, checked_at, and freshness. Also callable as is_safe_to_call.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "server": {
             "type": "string",
-            "description": "MCP server registry name (e.g. io.github.owner/name, com.example/server) or its remote URL (https://.../mcp). Partial names are matched.",
+            "description": "Registry name (io.github.owner/name) or that server's MCP endpoint URL. Partial names match the Toolweather index. A product homepage usually will not match.",
             "examples": [
               "com.ufcalendar/fight-api",
               "https://mcp.example.com/mcp"
@@ -32,15 +32,15 @@
           },
           "tool": {
             "type": "string",
-            "description": "Optional tool name to confirm it still exists on the server, e.g. search"
+            "description": "Optional tool name on that server. If the server is up but this name is absent, verdict is unsafe. Omit to judge the server only."
           },
           "fresh": {
             "type": "boolean",
-            "description": "Force a live handshake now (otherwise automatic when the stored check is >5 min old)"
+            "description": "True forces a live read-only initialize now and spends one of 200 live checks/day (priced as a live check). Omit to live-check only when the stored result is older than 5 minutes."
           },
           "bearer_token": {
             "type": "string",
-            "description": "Optional: your own token for this server, for a one-off authenticated initialize + tools/list check. Used once, never stored or logged."
+            "description": "Token for the target server only, not a Toolweather key. One authenticated initialize + tools/list, never stored or logged. Setting it forces a live check."
           }
         },
         "required": [
@@ -58,13 +58,13 @@
     {
       "name": "find_alternative_mcp_servers",
       "title": "Find a working MCP server that does X",
-      "description": "Find healthy, currently-working MCP servers by capability (e.g. 'send email', 'web search', 'postgres') or replacements for a broken server (pass its name/URL). Use when check_mcp_server_health says unsafe, or when you need a tool you don't have. Unhealthy servers are excluded. Returns summary first, then ranked servers with verdict, latency and matching tools. Example: {\"query\":\"send email\",\"limit\":5}. Alias: suggest_alternatives.",
+      "description": "Search the Toolweather index for healthy MCP servers by capability, or for a replacement for one broken server. Use when check_mcp_server_health is unsafe or unknown, or when you lack a capability. Do not use it to judge one server you already chose (check_mcp_server_health) or to subscribe to later outages (watch_server). Does not call those servers and does not spend a live-check credit; unsafe rows are dropped. Returns summary, checked_at, and alternatives[] with server, url, verdict, latency_ms, and matching_tools. Counts on the Toolweather daily quota. Also callable as suggest_alternatives.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
-            "description": "Capability text like 'send email', or a server name/URL to replace",
+            "description": "Capability phrase such as 'send email', or the registry name/URL of a server to replace. Not a tool name on Toolweather itself.",
             "examples": [
               "send email",
               "web search"
@@ -72,7 +72,7 @@
           },
           "limit": {
             "type": "integer",
-            "description": "1-20, default 5"
+            "description": "Max ranked servers to return. Integer 1-20; omitted means 5. There is no paging cursor."
           }
         },
         "required": [
@@ -84,13 +84,13 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       }
     },
     {
       "name": "get_api_key",
       "title": "Get a free Toolweather API key",
-      "description": "Get a free Toolweather API key instantly (1,000 calls/day, 3 watches). Optional: call health tools with no key (50/day anonymous). No email or signup. The key is shown once; pass it as the X-API-Key header or the api_key argument.",
+      "description": "Mint one new Toolweather API key (tw_…) for health checks and watches on this server (1,000 calls/day, 3 watches). Use it once per install, then send that key as the X-API-Key header. Do not call it every turn, and do not use it when you need a SpendGate key (spendgate_get_api_key returns sg_live_…). Takes no arguments; the caller network is the limit. Each call creates a different secret. Returns api_key once, plus daily_limit and watches_limit; later calls cannot fetch it again. A few new keys per network per day, then reuse an existing key. Health checks also work with no key at 50 calls/day.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -106,13 +106,13 @@
     {
       "name": "watch_server",
       "title": "Alert me when an MCP server breaks",
-      "description": "Get an HTTPS webhook when an MCP server goes down, its verdict changes (safe/caution/unsafe), it starts requiring auth, or its tool list has a breaking change. Use instead of polling. Returns a per-watch secret for verifying the X-Toolweather-Signature header. Free tier: 3 watches per key. Example: {\"server\":\"com.ufcalendar/fight-api\",\"webhook_url\":\"https://example.com/hook\"}.",
+      "description": "Create one HTTPS webhook subscription for an indexed MCP server's verdict, auth requirement, or breaking tool-list change. Use instead of polling check_mcp_server_health. Do not use it to read health now (check_mcp_server_health) or to list subscriptions (list_watches). Requires a Toolweather key from get_api_key. The same server and webhook_url do not create a second watch; a different URL does. Three watches are free; each extra watch is $0.05 for 30 days via x402. Returns id and a one-time secret for the signature header. Toolweather later POSTs alerts to the webhook_url you supply. Does not spend the daily check quota.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "server": {
             "type": "string",
-            "description": "MCP server registry name (e.g. io.github.owner/name, com.example/server) or its remote URL (https://.../mcp). Partial names are matched.",
+            "description": "Registry name (io.github.owner/name) or that server's MCP endpoint URL. Partial names match the Toolweather index. A product homepage usually will not match.",
             "examples": [
               "com.ufcalendar/fight-api",
               "https://mcp.example.com/mcp"
@@ -120,7 +120,7 @@
           },
           "webhook_url": {
             "type": "string",
-            "description": "Public https URL that receives POSTed JSON alerts"
+            "description": "Public https URL Toolweather will POST JSON alerts to. Private, loopback, and non-https hosts are rejected. The same URL plus server does not create a second watch."
           }
         },
         "required": [
@@ -132,14 +132,14 @@
         "title": "Watch a server",
         "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": false,
+        "idempotentHint": true,
         "openWorldHint": true
       }
     },
     {
       "name": "list_watches",
       "title": "List my server watches",
-      "description": "List this API key's server watches and their webhook delivery health.",
+      "description": "List webhook subscriptions stored for the Toolweather API key on this request, including delivery health. Use to copy a watch id before unwatch_server, or to see failures. Do not use it to learn if a server is up (check_mcp_server_health) or to create a subscription (watch_server). No arguments and no quota charge. The key is the X-API-Key header; anonymous callers are rejected. Returns watches[] (id, server, webhook_url, active, disabled_reason, last_known, consecutive_failures, last_delivery) and free_tier. Does not reveal webhook secrets and does not probe servers.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -155,13 +155,13 @@
     {
       "name": "unwatch_server",
       "title": "Stop watching a server",
-      "description": "Delete one of your watches by id (from list_watches).",
+      "description": "Delete one webhook subscription for this Toolweather API key and drop its pending deliveries. Use to stop alerts or to free a watch slot. Do not use it to change a webhook URL (delete, then watch_server) or to check health (check_mcp_server_health). Pass id from list_watches, not a server name. Repeating the same id deletes nothing further and returns watch not found. Returns {deleted: id}. Requires get_api_key first. Does not contact the MCP server and does not spend check quota.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "description": "Watch id, e.g. w_abc123"
+            "description": "Watch id from list_watches (w_…). Not a server registry name. An unknown id returns watch not found and removes nothing else."
           }
         },
         "required": [
@@ -179,13 +179,13 @@
     {
       "name": "check_api_status",
       "title": "Is this API / provider down right now?",
-      "description": "Check if an AI or developer API provider (OpenAI, Anthropic, Gemini, Mistral, Groq, GitHub, Stripe, Cloudflare, Vercel, Supabase, Twilio... ~40 total) is up, degraded or down right now. Use BEFORE calling a provider's API, or right after you get 5xx/429/timeout errors, to decide whether to retry, wait or switch to a fallback. Returns a one-line summary first, then verdict, recommended_action, open incidents, affected components, checked_at and freshness (checked every ~4 min). Example: {\"provider\":\"openai\"}. Free within the daily quota, then $0.003 via x402 (USDC on Base). Alias: get_status. Part of the Toolweather suite (Upstream).",
+      "description": "Read whether one tracked AI or developer API provider is operational, degraded, or down. Use before calling that provider, or right after 5xx, 429, or timeouts. Do not use it for an MCP server (check_mcp_server_health) or a model id (check_model_deprecation); ids come from list_providers, not URLs. Does not invoke the provider's API. Returns summary, verdict, recommended_action, open incidents, affected components, checked_at, and freshness (about every 4 minutes). Uses Upstream's quota, then $0.003 via x402, not the Toolweather check quota. Also callable as get_status.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "provider": {
             "type": "string",
-            "description": "Provider id (lowercase). Examples: openai, anthropic, google-ai, mistral, groq, github, stripe, cloudflare. Full list: list_providers.",
+            "description": "Lowercase id from list_providers, such as openai, anthropic, google-ai, github, or stripe. Not a URL and not an MCP registry name.",
             "examples": [
               "openai",
               "anthropic",
@@ -202,19 +202,19 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       }
     },
     {
       "name": "check_model_deprecation",
       "title": "Is this model deprecated, and what replaces it?",
-      "description": "Check if an LLM model id is active, deprecated or retired, its shutdown date, and the recommended replacement, from the provider's own deprecation page (OpenAI, Anthropic, Google, etc.). Use before hard-coding or calling a model, or when a model call fails with \"model not found / deprecated\". Returns summary first, then verdict, recommended_action (keep_using | plan_migration | switch_now | verify_with_provider), replacement, shutdown_date, evidence rows and freshness. Example: {\"model\":\"gpt-4-0613\"}. Free within the daily quota, then $0.003 via x402. Alias: get_model (param \"id\"). Part of the Toolweather suite (Upstream).",
+      "description": "Read whether one LLM model id is active, deprecated, or retired, plus its shutdown date and the provider's replacement. Use before hard-coding a model id, or when a call fails as model-not-found. Do not use it to see if the provider is down (check_api_status) or to list many retirements (list_recent_api_changes). Prefer model; id is only the legacy argument name. Returns summary, verdict, recommended_action (keep_using|plan_migration|switch_now|verify_with_provider), replacement, shutdown_date, evidence, and freshness. Upstream quota, then $0.003 via x402. Also callable as get_model.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "model": {
             "type": "string",
-            "description": "Model id as used in the API call. Examples: gpt-4o, claude-3-opus-20240229, gemini-1.5-pro.",
+            "description": "Model id exactly as the provider API expects, such as gpt-4o or claude-3-opus-20240229. Not a provider name; that is check_api_status.",
             "examples": [
               "gpt-4-0613",
               "claude-3-opus-20240229"
@@ -222,7 +222,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Deprecated alias of model."
+            "description": "Legacy name for the same model id. Prefer model. Not a provider id."
           }
         }
       },
@@ -231,23 +231,23 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       }
     },
     {
       "name": "list_recent_api_changes",
       "title": "What changed recently in AI/dev APIs?",
-      "description": "List recent breaking or notable changes across AI and developer APIs: outages and recoveries, deprecation-page edits, model retirements and pricing-page edits. Use to answer \"did anything change that could break my integration?\" or to explain sudden errors. Returns summary first, then the change list with timestamps and source links. Example: {\"provider\":\"anthropic\",\"kind\":\"model_retirement\"}. Free within the daily quota, then $0.01 via x402. Alias: get_changes. Part of the Toolweather suite (Upstream).",
+      "description": "List recent outages, deprecation-page edits, model retirements, and pricing-page edits across tracked AI and developer APIs. Use to see what changed in a window, or to explain a sudden integration error. Do not use it for one provider's live status (check_api_status) or for the once-a-day narrative (get_digest). Returns summary plus items with timestamps and source links. Upstream quota, then $0.01 via x402. Also callable as get_changes.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "since": {
             "type": "string",
-            "description": "ISO 8601 timestamp; default 7 days ago. Example: 2026-10-01T00:00:00Z"
+            "description": "ISO 8601 lower bound. Omit for the last 7 days. Not a YYYY-MM-DD digest key; that is get_digest's date."
           },
           "provider": {
             "type": "string",
-            "description": "Optional provider id, e.g. openai"
+            "description": "Optional id from list_providers. Omit to span every tracked provider."
           },
           "kind": {
             "type": "string",
@@ -257,11 +257,11 @@
               "model_retirement",
               "pricing"
             ],
-            "description": "Optional change type filter"
+            "description": "Optional change class. Omit for every class. Not a provider id."
           },
           "limit": {
             "type": "number",
-            "description": "Max items, default 100, max 500"
+            "description": "Max rows to return. Default 100, max 500. Not a page token."
           }
         }
       },
@@ -270,13 +270,13 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       }
     },
     {
       "name": "list_providers",
       "title": "List tracked API providers",
-      "description": "List the ~40 AI and developer API providers Upstream tracks with their current state (operational/degraded/outage) and checked_at. Use to find the right provider id for check_api_status, or for a quick all-providers health overview. Free. Part of the Toolweather suite (Upstream).",
+      "description": "List the AI and developer API providers Upstream tracks, each with state (operational, degraded, or outage) and checked_at. Use to choose a provider id before check_api_status. Do not use it as an MCP health check (check_mcp_server_health) or as the change feed (list_recent_api_changes). No arguments. Returns the catalog only. Does not probe providers, spend a SpendGate score, or use the Toolweather check quota. Free.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -286,19 +286,19 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       }
     },
     {
       "name": "get_digest",
       "title": "Daily AI/dev API breaking-changes digest",
-      "description": "Daily digest (free) of AI/dev API incidents, model deprecations/retirements, pricing-page changes and breaking MCP server changes. Use for a once-a-day catch-up instead of polling. Example: {} for the latest, or {\"date\":\"2026-10-14\"}. Part of the Toolweather suite (Upstream).",
+      "description": "Read one daily digest of AI/dev API incidents, model retirements, pricing-page edits, and breaking MCP server changes. Use once a day instead of polling list_recent_api_changes. Do not use it for a live provider check (check_api_status) or a filtered change feed (list_recent_api_changes). Omit date for the latest issue. Returns that issue's summary and items. Free: no Toolweather quota and no webhook.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "date": {
             "type": "string",
-            "description": "YYYY-MM-DD; omit for the latest issue"
+            "description": "UTC day YYYY-MM-DD of one digest issue. Omit for the latest issue. Not an ISO timestamp and not a range."
           }
         }
       },
@@ -307,29 +307,67 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       }
     },
     {
       "name": "score_spend",
       "title": "Score a planned spend before an agent pays",
-      "description": "Score a planned payment before sending it. Call this before any tool that transfers crypto, buys a gift card, starts a subscription, or pays an API or merchant. Pass amount in USD, category, merchant or endpoint URL, and any budget remaining. Returns score 0-100, verdict approve | ask_human | block, reasons, and recommended_action. approve means pay; ask_human means stop and ask a person; block means do not pay. Example: {\"amount\":12,\"category\":\"api_call\",\"merchant\":\"https://api.example.com\",\"daily_budget_remaining\":40}. Free within SpendGate's own quota (100/day anonymous, 1,000/day with a SpendGate key), then $0.001 via x402. Optional api_key is a SpendGate key (sg_live_…), not a Toolweather key. For a stable SpendGate daily cap through this bundle, call get_api_key first (Toolweather key) or pass a SpendGate sg_live_ key; anonymous callers share IP/session-based caps that can reset on rotating egress. Part of the Toolweather suite (SpendGate).",
+      "description": "Score one planned payment and return approve, ask_human, or block before any tool sends money. Use before a crypto transfer, gift card, subscription, or paid API call. Do not use it for uptime (check_mcp_server_health, check_api_status) or to read remaining free scores (get_quota). Does not transfer funds. Returns score 0-100, verdict (approve means pay, ask_human means stop and ask a person, block means do not pay), reasons, and recommended_action. Scoring is deterministic, so rewording purpose will not change the verdict. amount is USD, not token units. api_key, when set, is a SpendGate sg_live_ key, not a Toolweather tw_ key from get_api_key. Uses SpendGate's quota (100/day anonymous, 1,000/day with an sg_live_ key), then $0.001 via x402, not the Toolweather check quota.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["amount"],
+        "required": [
+          "amount"
+        ],
         "properties": {
-          "amount": { "type": "number", "description": "Planned spend in USD, not in token atomic units." },
-          "currency": { "type": "string", "description": "Payment currency. Defaults to USDC." },
-          "category": { "type": "string", "description": "One of status_check, api_call, saas, infra, gift_card, crypto_transfer, irreversible. Unknown categories are scored as unknown risk." },
-          "purpose": { "type": "string", "description": "Short human description. Used as the category when category is omitted." },
-          "merchant": { "type": "string", "description": "Merchant name or https endpoint URL that will receive the spend." },
-          "endpoint": { "type": "string", "description": "Alias of merchant when the payee is an API URL." },
-          "agent_id": { "type": "string", "description": "Your agent or key id. Echoed, not scored in v1." },
-          "api_key": { "type": "string", "description": "Optional SpendGate key (sg_live_…). Not a Toolweather key. For a stable daily cap pass an sg_live_ key, or call get_api_key first for a Toolweather key. Anonymous callers share a smaller IP/session cap that can reset on rotating egress." },
-          "daily_budget_remaining": { "type": "number", "description": "USD still available today. Amount above this is blocked." },
-          "monthly_budget_remaining": { "type": "number", "description": "USD still available this month. Amount above this is blocked." },
-          "risk_hints": { "type": "array", "items": { "type": "string" }, "description": "Self-reported hints. Raising: new_payee, new_merchant, first_payment, high_velocity, mismatched_purpose, off_platform, shared_wallet. Lowering: trusted_repeat, within_policy, human_preapproved. known_merchant marks the payee known." }
+          "amount": {
+            "type": "number",
+            "description": "Planned spend in USD, not in token atomic units. Compared with daily_budget_remaining and monthly_budget_remaining when those are set."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Payment currency. Defaults to USDC. Does not convert amount; amount stays in USD."
+          },
+          "category": {
+            "type": "string",
+            "description": "One of status_check, api_call, saas, infra, gift_card, crypto_transfer, irreversible. Unknown categories are scored as unknown risk, not rejected."
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Short human description. Used as the category when category is omitted. Rewording it does not change a v1 verdict."
+          },
+          "merchant": {
+            "type": "string",
+            "description": "Merchant name or https endpoint URL that would receive the spend. The call does not pay this URL."
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Alias of merchant when the payee is an API URL. Pass one of them, not both for different payees."
+          },
+          "agent_id": {
+            "type": "string",
+            "description": "Your agent or key id. Echoed back, not scored in v1."
+          },
+          "api_key": {
+            "type": "string",
+            "description": "Optional SpendGate key (sg_live_…). Not a Toolweather tw_ key; that key belongs in the X-API-Key header. Omit to use the anonymous IP/session cap, which can reset on rotating egress."
+          },
+          "daily_budget_remaining": {
+            "type": "number",
+            "description": "USD still available today. Amount above this is blocked. Omit if you have no daily cap to enforce."
+          },
+          "monthly_budget_remaining": {
+            "type": "number",
+            "description": "USD still available this month. Amount above this is blocked. Omit if you have no monthly cap."
+          },
+          "risk_hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Self-reported hints. Raising: new_payee, new_merchant, first_payment, high_velocity, mismatched_purpose, off_platform, shared_wallet. Lowering: trusted_repeat, within_policy, human_preapproved. known_merchant marks the payee known."
+          }
         }
       },
       "annotations": {
@@ -343,12 +381,15 @@
     {
       "name": "get_quota",
       "title": "SpendGate free scores left today",
-      "description": "Read how many free SpendGate scores remain today for this anonymous caller or SpendGate API key. Does not consume a score, is not billed, and does not use the Toolweather call quota. Optional api_key is a SpendGate key (sg_live_…). For a stable SpendGate daily cap through this bundle, call get_api_key first (Toolweather key) or pass a SpendGate sg_live_ key; anonymous callers share IP/session-based caps that can reset on rotating egress. Part of the Toolweather suite (SpendGate).",
+      "description": "Read how many free SpendGate scores this caller has left today. Use before a run of score_spend calls. Do not use it for the Toolweather health-check quota, and do not use it to mint a key (spendgate_get_api_key or get_api_key). Does not consume a score and is not billed. Pass an sg_live_ key to read that key's cap; omit it only for the anonymous IP/session cap, which can reset on rotating egress. A tw_ key does not select this cap. Returns the remaining SpendGate count only.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "api_key": { "type": "string", "description": "Optional sg_live_ key. Omit to read the anonymous IP/session cap, which can reset on rotating egress. For a stable cap, pass an sg_live_ key or call get_api_key first (Toolweather key)." }
+          "api_key": {
+            "type": "string",
+            "description": "Optional sg_live_ key from spendgate_get_api_key. Not a Toolweather tw_ key. Omit only to read the anonymous IP/session cap, which can reset on rotating egress."
+          }
         }
       },
       "annotations": {
@@ -356,18 +397,21 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       }
     },
     {
       "name": "spendgate_get_api_key",
       "title": "Get a free SpendGate API key",
-      "description": "Mint a free SpendGate API key (sg_live_…). The secret is returned once. Store it and pass it as the api_key argument on later score_spend or get_quota calls. This is SpendGate's get_api_key, renamed to spendgate_get_api_key because get_api_key on this server mints a Toolweather key. Not billed. Part of the Toolweather suite (SpendGate).",
+      "description": "Mint one new SpendGate API key (sg_live_…) for score_spend and get_quota. Use it once, then pass the secret as api_key on those tools. Do not call it every turn, and do not use it when you need a Toolweather key for health checks and watches (get_api_key returns tw_…). No required arguments. Each call creates a different secret. Returns that secret once. Not billed, and not drawn from the Toolweather quota. label is an optional stored note, not an auth secret.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "label": { "type": "string", "description": "Optional label stored with the key, up to 80 characters." }
+          "label": {
+            "type": "string",
+            "description": "Optional note stored beside the new sg_live_ key, max 80 characters. Not a secret and not a Toolweather key."
+          }
         }
       },
       "annotations": {
