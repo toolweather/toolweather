@@ -28,4 +28,4 @@ MCP health tools: `check_mcp_server_health`, `find_alternative_mcp_servers`, `ge
 
 Upstream (API status) tools on the same endpoint: `check_api_status`, `check_model_deprecation`, `list_recent_api_changes`, `list_providers`, `get_digest`.
 
-SpendGate tools on the same endpoint: `score_spend`, `get_quota`, `spendgate_get_api_key` (SpendGate's `get_api_key`, renamed because `get_api_key` mints a Toolweather key). `get_quota` keeps its name.
+SpendGate tools on the same endpoint: `score_spend`, `get_quota`, `spendgate_get_api_key` (SpendGate's `get_api_key`, renamed because `get_api_key` mints a Toolweather key). `get_quota` keeps its name. For a stable SpendGate daily cap through this bundle, call `get_api_key` first (Toolweather key) or pass a SpendGate `sg_live_` key; anonymous callers share IP/session-based caps that can reset on rotating egress.
