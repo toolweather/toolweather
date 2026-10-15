@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.toolweather/toolweather",
+  "title": "Toolweather",
+  "description": "Live health checks for MCP servers: is a server/tool safe to call now, plus working alternatives.",
+  "repository": {"url": "https://github.com/toolweather/toolweather", "source": "github"},
+  "websiteUrl": "https://toolweather.pages.dev",
+  "version": "1.0.0",
+  "remotes": [{
+    "type": "streamable-http",
+    "url": "https://toolweather.toolweather.workers.dev/mcp",
+    "headers": [{"name": "Authorization", "description": "Bearer API key (free, email toolweather@mail.grokbot.com)", "isRequired": true, "isSecret": true}]
+  }]
+}

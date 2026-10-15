@@ -8,3 +8,6 @@ CREATE TABLE IF NOT EXISTS changes(url TEXT, name TEXT, ts TEXT, severity TEXT, 
 CREATE TABLE IF NOT EXISTS api_keys(key_hash TEXT PRIMARY KEY, label TEXT, daily_limit INT, created TEXT);
 CREATE TABLE IF NOT EXISTS usage(key_hash TEXT, day TEXT, n INT, PRIMARY KEY(key_hash, day));
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS api_daily(day TEXT, endpoint TEXT, channel TEXT, outcome TEXT, calls INT, PRIMARY KEY(day, endpoint, channel, outcome));
+CREATE TABLE IF NOT EXISTS page_daily(day TEXT, path TEXT, ref TEXT, views INT, PRIMARY KEY(day, path, ref));
+CREATE TABLE IF NOT EXISTS page_uniques(day TEXT, vh TEXT, PRIMARY KEY(day, vh));

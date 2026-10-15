@@ -69,13 +69,14 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
 ];
 const INFO = { name: "toolweather", version: "0.1.0" };
-async function mcp(req, env, key) {
+async function mcp(req, env, key, ctx) {
   let msg; try { msg = await req.json(); } catch { return J({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   if (Array.isArray(msg)) return J({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batch not supported" } }, 400);
   const { id, method, params = {} } = msg;
   const ok = (result) => J({ jsonrpc: "2.0", id, result });
   const err = (code, message) => J({ jsonrpc: "2.0", id, error: { code, message } });
   if (id === undefined) return new Response(null, { status: 202 });
+  if (method !== "tools/call") track(env, ctx, "mcp:" + (method || "?").slice(0, 40), "mcp", "ok");
   switch (method) {
     case "server/discover": return ok({ resultType: "complete", supportedVersions: [MODERN, "2025-11-25", "2025-06-18", "2025-03-26"], capabilities: { tools: {} }, _meta: { "io.modelcontextprotocol/serverInfo": INFO }, ttlMs: 3600000, cacheScope: "public" });
     case "initialize": {
@@ -86,6 +87,7 @@ async function mcp(req, env, key) {
     case "tools/list": return ok({ tools: TOOLS });
     case "tools/call": {
       const g = await gate(env, key || params.arguments?.api_key);
+      track(env, ctx, String(params.name || "?").slice(0, 40), "mcp", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       if (!g.ok) return ok({ isError: true, content: [{ type: "text", text: g.msg }] });
       const a = params.arguments || {};
       let r;
@@ -98,8 +100,25 @@ async function mcp(req, env, key) {
   }
 }
 
+const today = () => new Date().toISOString().slice(0, 10);
+function track(env, ctx, endpoint, channel, outcome) {
+  ctx.waitUntil(env.DB.prepare("INSERT INTO api_daily VALUES(?,?,?,?,1) ON CONFLICT(day,endpoint,channel,outcome) DO UPDATE SET calls=calls+1")
+    .bind(today(), endpoint, channel, outcome).run().catch(() => {}));
+}
+async function hit(req, env, ctx, url) {
+  // Cookie-less page view counter. Unique visitors = sha256(daily salt + IP + UA); raw IP/UA never stored, salt rotates daily.
+  const day = today(), path = (url.searchParams.get("p") || "/").slice(0, 100);
+  let ref = ""; try { ref = new URL(url.searchParams.get("r") || "").hostname; } catch {}
+  if (ref.endsWith("toolweather.pages.dev")) ref = "";
+  const vh = (await sha256(`${day}|${env.SALT || "tw"}|${req.headers.get("cf-connecting-ip")}|${req.headers.get("user-agent")}`)).slice(0, 16);
+  ctx.waitUntil(env.DB.batch([
+    env.DB.prepare("INSERT INTO page_daily VALUES(?,?,?,1) ON CONFLICT(day,path,ref) DO UPDATE SET views=views+1").bind(day, path, ref.slice(0, 80)),
+    env.DB.prepare("INSERT OR IGNORE INTO page_uniques VALUES(?,?)").bind(day, vh),
+  ]).catch(() => {}));
+  return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "cache-control": "no-store" } });
+}
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url), p = url.pathname;
     const key = req.headers.get("x-api-key") || (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "") || url.searchParams.get("key");
     if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS" } });
@@ -107,12 +126,15 @@ export default {
       const m = await env.DB.prepare("SELECT v FROM meta WHERE k='last_ingest'").first();
       return J({ ok: true, last_ingest: m && m.v });
     }
+    if (p === "/v1/hit") return hit(req, env, ctx, url);
     if (p === "/mcp") {
       if (req.method === "GET") return new Response("method not allowed", { status: 405 });
-      return mcp(req, env, key);
+      return mcp(req, env, key, ctx);
     }
     if (p === "/v1/is_safe_to_call" || p === "/v1/suggest_alternatives") {
+      const ep = p.slice(4);
       const g = await gate(env, key);
+      track(env, ctx, ep, "rest", g.ok ? "ok" : g.code === 429 ? "rate_limited" : "unauthorized");
       if (!g.ok) return J({ error: g.msg }, g.code);
       const h = { "x-ratelimit-limit": String(g.limit), "x-ratelimit-remaining": String(Math.max(g.remaining, 0)) };
       const r = p.endsWith("is_safe_to_call") ? await isSafe(env, url.searchParams.get("server"), url.searchParams.get("tool"))
