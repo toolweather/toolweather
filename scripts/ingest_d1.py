@@ -10,7 +10,8 @@ COLS = ["url", "name", "transport", "verdict", "reasons", "status", "http_status
 # D1 free plan allows 100k rows written/day. Rewriting all ~2.3k servers + the whole FTS index every 15 min
 # cost ~12k rows per ingest (~1.2M/day), so we only write rows whose meaning changed, plus a freshness
 # refresh of last_checked once it is >= REFRESH_S old (the Worker downgrades "safe" after 90 min).
-REFRESH_S = 50 * 60
+# 75 min keeps ~15 min of slack before that downgrade while cutting refresh writes vs 50 min (~39k/day vs ~58k/day at ~2k servers).
+REFRESH_S = 75 * 60
 
 def _sig(row):
     """Comparison key that ignores probe-to-probe noise (timestamps, latency jitter)."""
