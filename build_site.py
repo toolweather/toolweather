@@ -1,5 +1,10 @@
-"""Generate site/index.html (static Toolweather status page preview) from mcp_health.db."""
+"""Generate the Toolweather status site from mcp_health.db.
+
+Writes site/index.html, then the readiness leaderboard, per-server pages,
+sitemap.xml, and robots.txt (see build_servers.py). probe.yml deploys site/.
+"""
 import base64, html, json, sqlite3, statistics, datetime, os
+import build_servers
 DB = "mcp_health.db"; OUT = "site/index.html"
 c = sqlite3.connect(DB); c.row_factory = sqlite3.Row
 LATEST = """SELECT e.server_name, e.url, p.* FROM endpoints e JOIN probes p ON p.id=(SELECT max(id) FROM probes WHERE endpoint_id=e.id)"""
@@ -36,6 +41,10 @@ brk_html = "".join(f'<tr><td><div class="nm">{esc(r["server_name"])}</div><div c
                    f'<td><span class="pill bad">{esc((r["error"] or "").split(":")[0][:18])}</span></td></tr>' for r in broken)
 chg_html = "".join(f'<li><span class="pill {"bad" if r["severity"]=="breaking" else "ok"}">{r["severity"]}</span> <b>{esc(r["server_name"])}</b> {esc(r["kind"].replace("_"," "))} <code>{esc(r["tool"] or "")}</code></li>' for r in changes) or "<li>No tool changes yet.</li>"
 ex = rel[0]["server_name"] if rel else "io.github.example/server"
+ex_slug = build_servers.server_slug(ex)
+ex_badge = html.escape(build_servers.badge_url(ex), quote=True)
+_stamp = datetime.datetime.fromtimestamp(last, datetime.timezone.utc).strftime("%d%H%MZ")
+metar = f"TW {_stamp} OPEN{round(100*by.get('ok',0)/max(total,1))} AUTH{round(100*by.get('auth_required',0)/max(total,1))} HS{med:.0f} QNH1013"
 _mcp_url = "https://toolweather.toolweather.workers.dev/mcp"
 _cursor_cfg = json.dumps({"url": _mcp_url}, separators=(",", ":"))
 _cursor_b64 = base64.b64encode(_cursor_cfg.encode()).decode()
@@ -77,10 +86,16 @@ a{color:var(--acc);text-underline-offset:3px}
 .wrap>*:not(.isobars){position:relative;z-index:1}
 header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .logo{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:500;font-size:30px;letter-spacing:.02em;line-height:1;color:var(--ink)}
-.mark{width:42px;height:42px;display:block;flex:none}
+.mark{width:56px;height:56px;display:block;flex:none}
 .logo span{color:var(--clay)}
 .live{color:var(--mut);font-family:var(--mono);font-size:12px;letter-spacing:.02em}
 .live i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--clay);margin-right:6px}
+.live a{margin-left:12px}
+.metar{font-family:var(--mono);color:var(--mute);font-size:12px;letter-spacing:.04em;margin:16px 0 0}
+.chip{display:inline-block;margin-right:8px;border:1.5px solid var(--ink);border-radius:999px;padding:0 8px;font-family:var(--sans);font-size:11px;letter-spacing:.08em;color:var(--ink);vertical-align:1px}
+.check{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 4px}
+.check label{font-size:14px}
+.check input{flex:1;min-width:220px;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font:15px var(--sans)}
 h1{font-family:var(--display);font-weight:500;color:var(--h);font-size:42px;letter-spacing:.015em;line-height:1.15;margin:32px 0 6px}
 h1::before{content:"";display:block;width:36px;height:2px;background:var(--clay);margin:0 0 14px}
 .sub{color:var(--mut);margin:0 0 28px;font-size:17px}
@@ -214,14 +229,17 @@ function twToggle(){{var d=document.documentElement,t=d.dataset.theme==="dark"?"
 {suite_css}
 </style></head><body><div class="wrap">
 <svg class="isobars" viewBox="0 0 1200 280" preserveAspectRatio="none" aria-hidden="true"><path d="M-40 78 C 150 28, 280 148, 450 74 S 740 8, 940 92 S 1160 168, 1280 64" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M-40 142 C 170 92, 310 202, 490 132 S 800 52, 1000 148 S 1200 214, 1300 132" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/><path d="M-20 206 C 190 156, 350 266, 550 196 S 880 116, 1100 206 S 1280 266, 1340 196" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
-<header><div class="logo"><img class="mark" src="mark.svg" width="42" height="42" alt=""><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check {when}<button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
+<header><div class="logo"><img class="mark" src="mark.svg" width="56" height="56" alt=""><div>Tool<span>weather</span></div></div><div class="live"><i></i>Last check {when}<a href="/servers/">Leaderboard</a><button class="tg" id="tg" onclick="twToggle()">Dark mode</button></div></header>
+<p class="metar"><span class="chip">BUNDLE</span>{metar}</p>
 <h1>MCP health, API status, and spend checks for agents</h1>
+<form class="check" id="srvcheck" method="get" action="https://toolweather.toolweather.workers.dev/v1/is_safe_to_call"><label for="srvq">Check a server</label><input id="srvq" name="server" placeholder="Registry name or MCP URL" autocomplete="off"><button class="btn" type="submit">Check</button></form>
+<p class="metar" id="srvout" hidden></p>
 {suite_html}
 <div class="stats"><div class="stat"><b>{total:,}</b><span>servers monitored</span></div><div class="stat"><b>{pct(by.get('ok',0))}</b><span>healthy (open)</span></div>
 <div class="stat"><b>{pct(by.get('auth_required',0))}</b><span>behind auth</span></div><div class="stat"><b>{med:.0f} ms</b><span>median handshake</span></div>
 <div class="stat"><b>{tools_total:,}</b><span>tools tracked</span></div></div>
 <div class="grid"><div class="card"><h2>Most reliable servers</h2><table><tr><th>Server</th><th>Uptime</th><th>Latency</th><th>Tools</th><th>Checks</th></tr>{rel_html}</table></div>
-<div><div class="card"><h2>2026-07-28 spec readiness</h2><div class="bar">{bar}</div><ul class="legend">{legend}</ul></div>
+<div><div class="card"><h2>2026-07-28 spec readiness</h2><div class="bar">{bar}</div><ul class="legend">{legend}</ul><p style="margin:12px 0 0"><a href="/servers/">Full readiness leaderboard</a></p></div>
 <div class="card" style="margin-top:18px"><h2>Recently broken</h2><table><tr><th>Server</th><th style="width:120px">Error</th></tr>{brk_html}</table></div></div></div>
 <div class="card" id="accuracy" style="margin-bottom:18px"><h2>Track record</h2><p class="sub" style="margin:4px 0 10px">How often a verdict still held at the very next scheduled check of the same server (usually ~15 minutes later). This measures how stable our verdicts are between checks, not whether real tool calls succeed. History starts Oct 15, 2026, so samples are still small. <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/v1/accuracy">Raw data</a></p><div id="accout">Loading…</div></div>
 <div class="card" id="key" style="margin-bottom:18px"><h2>Get a free API key</h2><p class="sub" style="margin:4px 0 10px">No signup. With no key you get 50 checks/day. <code>get_api_key</code> (or this button, or <code>POST /v1/keys</code>) raises that to 1,000 checks/day and 3 change-alert watches. The key is shown once.</p>
@@ -235,12 +253,15 @@ function twToggle(){{var d=document.documentElement,t=d.dataset.theme==="dark"?"
   "spec_readiness": {{"readiness": "dual", "supports_2026_07_28": true}},
   "last_tool_change": null, "last_checked": "…" }}
 
-# or add the MCP server and call the tool:
-is_safe_to_call(server="{esc(ex)}", tool="search")</pre></div>
+# or add the MCP server and call the tools:
+check_mcp_server_health(server="{esc(ex)}", tool="search")
+check_api_status(provider="openai")</pre></div>
 <div class="card"><h2>Tool changes</h2><ul class="chg">{chg_html}</ul>
 <h2 style="margin-top:18px">Embeddable badge</h2>
-<div><img alt="Toolweather badge" src="https://toolweather.toolweather.workers.dev/badge/{esc(ex)}.svg"></div>
-<pre style="margin-top:10px">[![Toolweather](https://toolweather.toolweather.workers.dev/badge/{esc(ex)}.svg)](https://toolweather.pages.dev/)</pre></div></div>
-<footer>Preview generated from local probe data. Probes only run initialize/server-discover and tools/list — tools are never called. Free tier: 1,000 checks/day per key (<a style="color:var(--acc)" href="#key">get one instantly</a>), plus change alerts (signed webhooks) for 3 watched servers; heavier use is pay-per-call (<a style="color:var(--acc)" href="#pricing">pricing</a>) — see <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather#change-alerts-webhooks">docs</a>. <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather">GitHub</a> · <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/openapi.json">OpenAPI</a> · <a style="color:var(--acc)" href="/llms.txt">llms.txt</a> · <a style="color:var(--acc)" href="/.well-known/mcp">MCP server card</a> · MCP suite endpoint: https://toolweather.toolweather.workers.dev/mcp (MCP health + Upstream + SpendGate tools) · SpendGate: <a style="color:var(--acc)" href="https://spendgate.toolweather.workers.dev">spendgate.toolweather.workers.dev</a> · Upstream REST: <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev">upstream.toolweather.workers.dev</a> · New: the free daily <a style="color:var(--acc)" href="https://upstream-api.pages.dev/digest/">breaking-changes digest</a> (MCP + AI/dev APIs, <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev/digest/feed.xml">RSS</a>) · <a style="color:var(--acc)" href="/terms">Terms</a> · <a style="color:var(--acc)" href="/privacy">Privacy</a> · Contact: toolweather@mail.grokbot.com · Cookie-free, anonymous visit counting.</footer>
-</div><script>document.getElementById("tg").textContent=document.documentElement.dataset.theme==="dark"?"Light mode":"Dark mode"</script><script>fetch("https://toolweather.toolweather.workers.dev/v1/accuracy").then(function(r){{return r.json()}}).then(function(d){{var L={{safe:"Safe (up)",caution_auth:"Caution (needs login)",unsafe:"Unsafe (down)"}},h="<table><tr><th>Day (UTC)</th>";Object.keys(L).forEach(function(k){{h+="<th>"+L[k]+"</th>"}});h+="</tr>";d.daily.forEach(function(x){{h+="<tr><td>"+x.day+"</td>";Object.keys(L).forEach(function(k){{var v=x[k];h+="<td>"+(v?(100*v.match_rate).toFixed(1)+"% <span class=u>of "+v.pairs.toLocaleString()+"</span>":"–")+"</td>"}});h+="</tr>"}});document.getElementById("accout").innerHTML=d.daily.length?h+"</table>":"No data yet."}}).catch(function(){{document.getElementById("accout").textContent="Track record unavailable right now."}})</script><script>document.getElementById("getkey").onclick=async function(){{var b=this,o=document.getElementById("keyout");b.disabled=true;b.textContent="Creating…";try{{var r=await fetch("https://toolweather.toolweather.workers.dev/v1/keys?source=web",{{method:"POST"}}),d=await r.json();o.style.display="block";o.textContent=r.ok?"Your key (shown once, copy it now):\\n"+d.api_key+"\\n\\nUse it as the X-API-Key header:\\n"+d.try:(d.message||"Something went wrong, please try again.");b.textContent=r.ok?"Key created":"Get a free key";if(!r.ok)b.disabled=false}}catch(e){{o.style.display="block";o.textContent="Network error, please try again.";b.disabled=false;b.textContent="Get a free key"}}}}</script><script>try{{fetch("https://toolweather.toolweather.workers.dev/v1/hit?p="+encodeURIComponent(location.pathname)+"&r="+encodeURIComponent(document.referrer),{{mode:"no-cors",keepalive:true}})}}catch(e){{}}</script></body></html>"""
+<div><img alt="Toolweather badge" src="{ex_badge}"></div>
+<pre style="margin-top:10px">[![Toolweather]({ex_badge})](https://toolweather.pages.dev/servers/{esc(ex_slug)}/)</pre>
+<p class="u" style="margin:8px 0 0"><a href="/servers/{esc(ex_slug)}/">This server's status page</a> · <a href="/servers/">All servers</a></p></div></div>
+<footer>Preview generated from local probe data. Probes only run initialize/server-discover and tools/list — tools are never called. Free tier: 1,000 checks/day per key (<a style="color:var(--acc)" href="#key">get one instantly</a>), plus change alerts (signed webhooks) for 3 watched servers; heavier use is pay-per-call (<a style="color:var(--acc)" href="#pricing">pricing</a>) — see <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather#change-alerts-webhooks">docs</a>. <a style="color:var(--acc)" href="/servers/">Readiness leaderboard</a> · <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather">GitHub</a> · <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/openapi.json">OpenAPI</a> · <a style="color:var(--acc)" href="/llms.txt">llms.txt</a> · <a style="color:var(--acc)" href="/.well-known/mcp">MCP server card</a> · MCP suite endpoint: https://toolweather.toolweather.workers.dev/mcp (MCP health + Upstream + SpendGate tools) · SpendGate: <a style="color:var(--acc)" href="https://spendgate.toolweather.workers.dev">spendgate.toolweather.workers.dev</a> · Upstream REST: <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev">upstream.toolweather.workers.dev</a> · New: the free daily <a style="color:var(--acc)" href="https://upstream-api.pages.dev/digest/">breaking-changes digest</a> (MCP + AI/dev APIs, <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev/digest/feed.xml">RSS</a>) · <a style="color:var(--acc)" href="/terms">Terms</a> · <a style="color:var(--acc)" href="/privacy">Privacy</a> · Contact: toolweather@mail.grokbot.com · Cookie-free, anonymous visit counting.</footer>
+</div><script>document.getElementById("tg").textContent=document.documentElement.dataset.theme==="dark"?"Light mode":"Dark mode"</script><script>fetch("https://toolweather.toolweather.workers.dev/v1/accuracy").then(function(r){{return r.json()}}).then(function(d){{var L={{safe:"Safe (up)",caution_auth:"Caution (needs login)",unsafe:"Unsafe (down)"}},h="<table><tr><th>Day (UTC)</th>";Object.keys(L).forEach(function(k){{h+="<th>"+L[k]+"</th>"}});h+="</tr>";d.daily.forEach(function(x){{h+="<tr><td>"+x.day+"</td>";Object.keys(L).forEach(function(k){{var v=x[k];h+="<td>"+(v?(100*v.match_rate).toFixed(1)+"% <span class=u>of "+v.pairs.toLocaleString()+"</span>":"–")+"</td>"}});h+="</tr>"}});document.getElementById("accout").innerHTML=d.daily.length?h+"</table>":"No data yet."}}).catch(function(){{document.getElementById("accout").textContent="Track record unavailable right now."}})</script><script>document.getElementById("getkey").onclick=async function(){{var b=this,o=document.getElementById("keyout");b.disabled=true;b.textContent="Creating…";try{{var r=await fetch("https://toolweather.toolweather.workers.dev/v1/keys?source=web",{{method:"POST"}}),d=await r.json();o.style.display="block";o.textContent=r.ok?"Your key (shown once, copy it now):\\n"+d.api_key+"\\n\\nUse it as the X-API-Key header:\\n"+d.try:(d.message||"Something went wrong, please try again.");b.textContent=r.ok?"Key created":"Get a free key";if(!r.ok)b.disabled=false}}catch(e){{o.style.display="block";o.textContent="Network error, please try again.";b.disabled=false;b.textContent="Get a free key"}}}}</script><script>try{{fetch("https://toolweather.toolweather.workers.dev/v1/hit?p="+encodeURIComponent(location.pathname)+"&r="+encodeURIComponent(document.referrer),{{mode:"no-cors",keepalive:true}})}}catch(e){{}}</script><script>document.getElementById("srvcheck").addEventListener("submit",async function(ev){{ev.preventDefault();var q=document.getElementById("srvq").value.trim(),o=document.getElementById("srvout");if(!q)return;o.hidden=false;o.textContent="Checking…";try{{var r=await fetch("https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server="+encodeURIComponent(q)),d=await r.json();if(!r.ok){{o.textContent=d.message||d.error||"Check unavailable.";return}}var lat=d.latency_ms==null?"—":Math.round(d.latency_ms)+" ms";o.textContent=(d.verdict||"unknown")+" · "+(d.status||"")+" · "+lat}}catch(e){{o.textContent="Check unavailable."}}}});</script></body></html>"""
 os.makedirs("site", exist_ok=True); open(OUT, "w").write(page); print("wrote", OUT, total, "servers")
+build_servers.generate(c, site_dir="site")
