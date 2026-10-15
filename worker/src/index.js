@@ -245,6 +245,20 @@ export default {
         : await alternatives(env, url.searchParams.get("q"), url.searchParams.get("limit"));
       return J(r, r.error ? 400 : 200, h);
     }
+    if (p === "/v1/accuracy") {
+      const { results } = await env.DB.prepare("SELECT * FROM accuracy_daily ORDER BY day DESC, verdict LIMIT 300").all();
+      const days = {}, tot = {};
+      for (const r of results) {
+        (days[r.day] ||= { day: r.day })[r.verdict] = { pairs: r.pairs, matched: r.matched, match_rate: r.pairs ? +(r.matched / r.pairs).toFixed(4) : null, avg_gap_minutes: Math.round(r.avg_gap_s / 60) };
+        const t = (tot[r.verdict] ||= { pairs: 0, matched: 0 }); t.pairs += r.pairs; t.matched += r.matched;
+      }
+      for (const t of Object.values(tot)) t.match_rate = t.pairs ? +(t.matched / t.pairs).toFixed(4) : null;
+      track(env, ctx, "accuracy", "rest", "ok");
+      return J({ metric: "verdict_matched_next_probe",
+        definition: "For each scheduled probe of an endpoint, did the very next scheduled probe of the same endpoint (usually ~15 min later, at most 60 min) have the same status? safe = handshake + tools/list OK, caution_auth = requires authentication, unsafe = down/broken.",
+        limitations: ["Measures how stable a verdict is until the next check, not whether real tool calls succeed.", "Scored by status class only; extra caution reasons (slow, recent breaking change, stale) are not scored.", "History starts 2026-10-15 (UTC); early days have small samples."],
+        days_covered: Object.keys(days).length, totals: tot, daily: Object.values(days) }, 200, { "cache-control": "max-age=600" });
+    }
     if (p === "/v1/keys") {
       if (req.method !== "POST") return J({ error: "use POST /v1/keys" }, 405);
       const src = url.searchParams.get("source") === "web" ? "web" : "rest";
@@ -275,7 +289,7 @@ export default {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + rw}" height="20" role="img" aria-label="toolweather: ${txt}"><rect width="${lw}" height="20" rx="3" fill="#4b5563"/><rect x="${lw}" width="${rw}" height="20" rx="3" fill="${col}"/><rect x="${lw - 3}" width="6" height="20" fill="${col}"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="8" y="14">toolweather</text><text x="${lw + 6}" y="14">${txt}</text></g></svg>`;
       return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=300" } });
     }
-    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", endpoints: ["/v1/keys", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
+    if (p === "/") return J({ name: "Toolweather API", docs: "https://github.com/toolweather/toolweather", openapi: "/openapi.json", server_card: "/.well-known/mcp", get_key: "POST /v1/keys", endpoints: ["/v1/keys", "/v1/accuracy", "/v1/is_safe_to_call?server=&tool=", "/v1/suggest_alternatives?q=", "/v1/watches", "/mcp", "/health"] });
     return J({ error: "not found" }, 404);
   },
   async scheduled(ev, env, ctx) { ctx.waitUntil(runAlerts(env)); },

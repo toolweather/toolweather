@@ -838,6 +838,18 @@
           }
         }
       }
+    },
+    "/v1/accuracy": {
+      "get": {
+        "operationId": "get_accuracy",
+        "summary": "Public track record: daily share of verdicts that matched the next scheduled probe of the same server (no key needed)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Daily and total match rates per verdict class, with definition and limitations"
+          }
+        }
+      }
     }
   }
 }
