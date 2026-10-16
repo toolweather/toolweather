@@ -137,19 +137,19 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
 <article class="card snip" id="snip-cursor">
 <div class="sniphead"><h3>Cursor</h3><button class="copy" type="button" data-copy="cfg-cursor" aria-label="Copy Cursor mcp.json">Copy</button></div>
 <p class="where">~/.cursor/mcp.json</p>
-<a class="addcursor" href="cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&amp;config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9"><img class="for-light" src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add to Cursor" height="32"><img class="for-dark" src="https://cursor.com/deeplink/mcp-install-light.svg" alt="" height="32"></a>
+<a class="addcursor" href="cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&amp;config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcD9zcmM9c2l0ZSJ9"><img class="for-light" src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add to Cursor" height="32"><img class="for-dark" src="https://cursor.com/deeplink/mcp-install-light.svg" alt="" height="32"></a>
 <pre id="cfg-cursor">{
   "mcpServers": {
     "toolweather": {
-      "url": "https://toolweather.toolweather.workers.dev/mcp"
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
     }
   }
 }</pre>
 <details class="deeplink"><summary>Cursor install link</summary>
 <div class="blocklab"><span>cursor:// deeplink</span><button class="copy" type="button" data-copy="cfg-deeplink" aria-label="Copy Cursor install link">Copy</button></div>
-<pre id="cfg-deeplink">cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&amp;config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9</pre>
+<pre id="cfg-deeplink">cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&amp;config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcD9zcmM9c2l0ZSJ9</pre>
 </details>
-<p class="note-sm">Cursor asks before it installs. The link encodes <code>{"url":"https://toolweather.toolweather.workers.dev/mcp"}</code>.</p>
+<p class="note-sm">Cursor asks before it installs. The link encodes <code>{"url":"https://toolweather.toolweather.workers.dev/mcp?src=site"}</code>.</p>
 </article>
 <article class="card snip" id="snip-claude">
 <div class="sniphead"><h3>Claude</h3></div>
@@ -159,19 +159,19 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
   "mcpServers": {
     "toolweather": {
       "type": "http",
-      "url": "https://toolweather.toolweather.workers.dev/mcp"
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
     }
   }
 }</pre>
 <p class="note-sm">Set <code>"type": "http"</code>. Claude Code treats a <code>url</code> without <code>type</code> as stdio and skips it.</p>
 <div class="blocklab"><h4>Claude Code CLI</h4><button class="copy" type="button" data-copy="cfg-claude-cli" aria-label="Copy Claude Code CLI">Copy</button></div>
-<pre id="cfg-claude-cli">claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp</pre>
+<pre id="cfg-claude-cli">claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp?src=site</pre>
 <div class="blocklab"><h4>Claude Desktop</h4><span>claude_desktop_config.json</span><button class="copy" type="button" data-copy="cfg-desktop" aria-label="Copy Claude Desktop config">Copy</button></div>
 <pre id="cfg-desktop">{
   "mcpServers": {
     "toolweather": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp"]
+      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp?src=site"]
     }
   }
 }</pre>
@@ -180,11 +180,11 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
 <article class="card snip" id="snip-remote">
 <div class="sniphead"><h3>Smithery / remote URL</h3><button class="copy" type="button" data-copy="cfg-remote-url" aria-label="Copy MCP endpoint URL">Copy</button></div>
 <p class="where">streamable HTTP</p>
-<pre id="cfg-remote-url">https://toolweather.toolweather.workers.dev/mcp</pre>
+<pre id="cfg-remote-url">https://toolweather.toolweather.workers.dev/mcp?src=site</pre>
 <div class="blocklab"><h4>Smithery HTTP config</h4><button class="copy" type="button" data-copy="cfg-smithery" aria-label="Copy Smithery HTTP config">Copy</button></div>
 <pre id="cfg-smithery">{
   "type": "http",
-  "url": "https://toolweather.toolweather.workers.dev/mcp"
+  "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
 }</pre>
 <p class="note-sm">Paste the URL into Smithery or any remote HTTP client (Cline uses this same URL). <code>type</code> and <code>url</code> only. No API key and no Authorization header.</p>
 </article>
@@ -196,7 +196,7 @@ footer{color:var(--mut);font-size:12px;margin-top:28px}
 "headers": { "X-API-Key": "&lt;key from get_api_key&gt;" }
 
 Claude Code CLI:
-claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp --header "X-API-Key: &lt;key&gt;"
+claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp?src=site --header "X-API-Key: &lt;key&gt;"
 
 Claude Desktop args, plus "env": { "TW_KEY": "&lt;key&gt;" }:
 "--header", "X-API-Key:${TW_KEY}"
@@ -254,5 +254,5 @@ check_api_status(provider="openai")</pre></div>
 <div><img alt="Toolweather badge" src="https://toolweather.toolweather.workers.dev/badge/com.ufcalendar/fight-api.svg"></div>
 <pre style="margin-top:10px">[![Toolweather](https://toolweather.toolweather.workers.dev/badge/com.ufcalendar/fight-api.svg)](https://toolweather.pages.dev/servers/com.ufcalendar--fight-api/)</pre>
 <p class="u" style="margin:8px 0 0"><a href="/servers/com.ufcalendar--fight-api/">This server's status page</a> · <a href="/servers/">All servers</a></p></div></div>
-<footer>Preview generated from local probe data. Probes only run initialize/server-discover and tools/list — tools are never called. Free tier: 1,000 checks/day per key (<a style="color:var(--acc)" href="#key">get one instantly</a>), plus change alerts (signed webhooks) for 3 watched servers; heavier use is pay-per-call (<a style="color:var(--acc)" href="#pricing">pricing</a>) — see <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather#change-alerts-webhooks">docs</a>. <a style="color:var(--acc)" href="/servers/">Readiness leaderboard</a> · <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather">GitHub</a> · <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/openapi.json">OpenAPI</a> · <a style="color:var(--acc)" href="/llms.txt">llms.txt</a> · <a style="color:var(--acc)" href="/.well-known/mcp">MCP server card</a> · MCP suite endpoint: https://toolweather.toolweather.workers.dev/mcp (MCP health + Upstream + SpendGate + PayCheck tools) · SpendGate: <a style="color:var(--acc)" href="https://spendgate.toolweather.workers.dev">spendgate.toolweather.workers.dev</a> · PayCheck: <a style="color:var(--acc)" href="https://paycheck.toolweather.workers.dev">paycheck.toolweather.workers.dev</a> · Upstream REST: <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev">upstream.toolweather.workers.dev</a> · Contact: toolweather@mail.grokbot.com · Cookie-free, anonymous visit counting.</footer>
+<footer>Preview generated from local probe data. Probes only run initialize/server-discover and tools/list — tools are never called. Free tier: 1,000 checks/day per key (<a style="color:var(--acc)" href="#key">get one instantly</a>), plus change alerts (signed webhooks) for 3 watched servers; heavier use is pay-per-call (<a style="color:var(--acc)" href="#pricing">pricing</a>) — see <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather#change-alerts-webhooks">docs</a>. <a style="color:var(--acc)" href="/servers/">Readiness leaderboard</a> · <a style="color:var(--acc)" href="https://github.com/toolweather/toolweather">GitHub</a> · <a style="color:var(--acc)" href="https://toolweather.toolweather.workers.dev/openapi.json">OpenAPI</a> · <a style="color:var(--acc)" href="/llms.txt">llms.txt</a> · <a style="color:var(--acc)" href="/.well-known/mcp">MCP server card</a> · MCP suite endpoint: https://toolweather.toolweather.workers.dev/mcp?src=site (MCP health + Upstream + SpendGate + PayCheck tools) · SpendGate: <a style="color:var(--acc)" href="https://spendgate.toolweather.workers.dev">spendgate.toolweather.workers.dev</a> · PayCheck: <a style="color:var(--acc)" href="https://paycheck.toolweather.workers.dev">paycheck.toolweather.workers.dev</a> · Upstream REST: <a style="color:var(--acc)" href="https://upstream.toolweather.workers.dev">upstream.toolweather.workers.dev</a> · Contact: toolweather@mail.grokbot.com · Cookie-free, anonymous visit counting.</footer>
 </div><script>document.getElementById("tg").textContent=document.documentElement.dataset.theme==="dark"?"Light mode":"Dark mode"</script><script>fetch("https://toolweather.toolweather.workers.dev/v1/accuracy").then(function(r){return r.json()}).then(function(d){var L={safe:"Safe (up)",caution_auth:"Caution (needs login)",unsafe:"Unsafe (down)"},h="<table><tr><th>Day (UTC)</th>";Object.keys(L).forEach(function(k){h+="<th>"+L[k]+"</th>"});h+="</tr>";d.daily.forEach(function(x){h+="<tr><td>"+x.day+"</td>";Object.keys(L).forEach(function(k){var v=x[k];h+="<td>"+(v?(100*v.match_rate).toFixed(1)+"% <span class=u>of "+v.pairs.toLocaleString()+"</span>":"–")+"</td>"});h+="</tr>"});document.getElementById("accout").innerHTML=d.daily.length?h+"</table>":"No data yet."}).catch(function(){document.getElementById("accout").textContent="Track record unavailable right now."})</script><script>document.getElementById("getkey").onclick=async function(){var b=this,o=document.getElementById("keyout");b.disabled=true;b.textContent="Creating…";try{var r=await fetch("https://toolweather.toolweather.workers.dev/v1/keys?source=web",{method:"POST"}),d=await r.json();o.style.display="block";o.textContent=r.ok?"Your key (shown once, copy it now):\n"+d.api_key+"\n\nUse it as the X-API-Key header:\n"+d.try:(d.message||"Something went wrong, please try again.");b.textContent=r.ok?"Key created":"Get a free key";if(!r.ok)b.disabled=false}catch(e){o.style.display="block";o.textContent="Network error, please try again.";b.disabled=false;b.textContent="Get a free key"}}</script><script>try{fetch("https://toolweather.toolweather.workers.dev/v1/hit?p="+encodeURIComponent(location.pathname)+"&r="+encodeURIComponent(document.referrer),{mode:"no-cors",keepalive:true})}catch(e){}</script><script>document.getElementById("srvcheck").addEventListener("submit",async function(ev){ev.preventDefault();var q=document.getElementById("srvq").value.trim(),o=document.getElementById("srvout");if(!q)return;o.hidden=false;o.textContent="Checking…";try{var r=await fetch("https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server="+encodeURIComponent(q)),d=await r.json();if(!r.ok){o.textContent=d.message||d.error||"Check unavailable.";return}var lat=d.latency_ms==null?"—":Math.round(d.latency_ms)+" ms";o.textContent=(d.verdict||"unknown")+" · "+(d.status||"")+" · "+lat}catch(e){o.textContent="Check unavailable."}});</script></body></html>

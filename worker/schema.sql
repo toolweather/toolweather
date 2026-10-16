@@ -26,3 +26,4 @@ CREATE TABLE IF NOT EXISTS live_usage(key_hash TEXT, day TEXT, n INT, PRIMARY KE
 CREATE TABLE IF NOT EXISTS accuracy_daily(day TEXT, verdict TEXT, pairs INT, matched INT, avg_gap_s INT, PRIMARY KEY(day, verdict));
 
 CREATE TABLE IF NOT EXISTS anon(ip_hash TEXT, day TEXT, used INT, PRIMARY KEY(ip_hash, day));
+CREATE TABLE IF NOT EXISTS source_daily (day TEXT NOT NULL, src TEXT NOT NULL, tool TEXT NOT NULL, outcome TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, src, tool, outcome));

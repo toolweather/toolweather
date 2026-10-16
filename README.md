@@ -2,7 +2,7 @@
 
 [![Toolweather](https://toolweather.toolweather.workers.dev/badge/io.github.toolweather/toolweather.svg)](https://toolweather.pages.dev/servers/io.github.toolweather--toolweather/)
 
-**One connection gives you four tools.** Add `https://toolweather.toolweather.workers.dev/mcp` once.
+**One connection gives you four tools.** Add `https://toolweather.toolweather.workers.dev/mcp?src=site` once.
 
 | | What you get | Tools |
 | --- | --- | --- |
@@ -13,7 +13,7 @@
 
 - Status page: https://toolweather.pages.dev
 - MCP readiness leaderboard: https://toolweather.pages.dev/servers/
-- API / MCP: https://toolweather.toolweather.workers.dev/mcp
+- API / MCP: https://toolweather.toolweather.workers.dev/mcp?src=site
 - Upstream REST + x402 (still independent): https://upstream.toolweather.workers.dev · https://upstream-api.pages.dev
 - SpendGate REST + x402 (still independent): https://spendgate.toolweather.workers.dev
 - PayCheck REST + x402 (still independent): https://paycheck.toolweather.workers.dev
@@ -29,13 +29,13 @@ The same anonymous configs are copyable on the status page: https://toolweather.
 
 ### Add to Cursor
 
-[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9)
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcD9zcmM9c2l0ZSJ9)
 
 ```text
-cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9
+cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcD9zcmM9c2l0ZSJ9
 ```
 
-Checked against the [Cursor MCP install link](https://cursor.com/docs/mcp/install-links) format: `cursor://anysphere.cursor-deeplink/mcp/install?name=$NAME&config=$BASE64`. `name` is the server name. `config` is the base64 of `JSON.stringify` of the single server object. Cursor's own example encodes `{"command":"npx","args":["-y","@modelcontextprotocol/server-postgres","postgresql://localhost/mydb"]}`. This link encodes `{"url":"https://toolweather.toolweather.workers.dev/mcp"}`. Cursor asks before it installs.
+Checked against the [Cursor MCP install link](https://cursor.com/docs/mcp/install-links) format: `cursor://anysphere.cursor-deeplink/mcp/install?name=$NAME&config=$BASE64`. `name` is the server name. `config` is the base64 of `JSON.stringify` of the single server object. Cursor's own example encodes `{"command":"npx","args":["-y","@modelcontextprotocol/server-postgres","postgresql://localhost/mydb"]}`. This link encodes `{"url":"https://toolweather.toolweather.workers.dev/mcp?src=site"}`. Cursor asks before it installs.
 
 ### Cursor
 
@@ -45,7 +45,7 @@ Checked against the [Cursor MCP install link](https://cursor.com/docs/mcp/instal
 {
   "mcpServers": {
     "toolweather": {
-      "url": "https://toolweather.toolweather.workers.dev/mcp"
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
     }
   }
 }
@@ -60,14 +60,14 @@ Checked against the [Cursor MCP install link](https://cursor.com/docs/mcp/instal
   "mcpServers": {
     "toolweather": {
       "type": "http",
-      "url": "https://toolweather.toolweather.workers.dev/mcp"
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
     }
   }
 }
 ```
 
 ```sh
-claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp
+claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp?src=site
 ```
 
 ### Claude Desktop
@@ -79,7 +79,7 @@ claude mcp add --transport http toolweather https://toolweather.toolweather.work
   "mcpServers": {
     "toolweather": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp"]
+      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp?src=site"]
     }
   }
 }
@@ -92,7 +92,7 @@ Public streamable HTTP. No API key on the free tier (50 calls/day). No `Authoriz
 Paste the URL into [Smithery](https://smithery.ai/docs/build/publish) or any remote HTTP client. Cline (`cline_mcp_settings.json`) uses this same URL:
 
 ```text
-https://toolweather.toolweather.workers.dev/mcp
+https://toolweather.toolweather.workers.dev/mcp?src=site
 ```
 
 Smithery's HTTP config is `type` plus `url` only ([deep linking](https://smithery.ai/docs/use/deep-linking)):
@@ -100,7 +100,7 @@ Smithery's HTTP config is `type` plus `url` only ([deep linking](https://smither
 ```json
 {
   "type": "http",
-  "url": "https://toolweather.toolweather.workers.dev/mcp"
+  "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
 }
 ```
 
@@ -117,7 +117,7 @@ Cursor and Claude Code, inside the `toolweather` object:
 Claude Code CLI:
 
 ```sh
-claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp --header "X-API-Key: <key>"
+claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp?src=site --header "X-API-Key: <key>"
 ```
 
 Claude Desktop — header arg plus env:
@@ -127,7 +127,7 @@ Claude Desktop — header arg plus env:
   "mcpServers": {
     "toolweather": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp",
+      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp?src=site",
                "--header", "X-API-Key:${TW_KEY}"],
       "env": { "TW_KEY": "<key from get_api_key>" }
     }
@@ -144,7 +144,7 @@ Claude Desktop — header arg plus env:
   "servers": {
     "toolweather": {
       "type": "http",
-      "url": "https://toolweather.toolweather.workers.dev/mcp"
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
     }
   }
 }
@@ -158,7 +158,7 @@ To send a key, prompt for it:
   "servers": {
     "toolweather": {
       "type": "http",
-      "url": "https://toolweather.toolweather.workers.dev/mcp",
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site",
       "headers": { "X-API-Key": "${input:tw-key}" }
     }
   }
@@ -201,7 +201,7 @@ Get a key with `curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
 
 ### MCP
 
-Add `https://toolweather.toolweather.workers.dev/mcp` as a remote MCP server. No signup: connect with no key (50 calls/day). `get_api_key` raises that to 1,000 calls/day. Then send header `X-API-Key: <key>`.
+Add `https://toolweather.toolweather.workers.dev/mcp?src=site` as a remote MCP server. No signup: connect with no key (50 calls/day). `get_api_key` raises that to 1,000 calls/day. Then send header `X-API-Key: <key>`.
 
 **MCP health:** `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`),
 `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), and change alerts

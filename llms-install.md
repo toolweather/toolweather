@@ -8,10 +8,10 @@ Free to try. No signup. Connect with no key (50 calls/day). Call `get_api_key` t
 curl -X POST https://toolweather.toolweather.workers.dev/v1/keys
 ```
 
-Add to Cursor (one click; Cursor asks before it installs). The link is `cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=<base64>`, and the config decodes to `{"url":"https://toolweather.toolweather.workers.dev/mcp"}`:
+Add to Cursor (one click; Cursor asks before it installs). The link is `cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=<base64>`, and the config decodes to `{"url":"https://toolweather.toolweather.workers.dev/mcp?src=site"}`:
 
 ```text
-cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9
+cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcD9zcmM9c2l0ZSJ9
 ```
 
 Cursor (`~/.cursor/mcp.json`):
@@ -20,7 +20,7 @@ Cursor (`~/.cursor/mcp.json`):
 {
   "mcpServers": {
     "toolweather": {
-      "url": "https://toolweather.toolweather.workers.dev/mcp"
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
     }
   }
 }
@@ -33,13 +33,13 @@ Claude Code (`.mcp.json`, `"type": "http"` required):
   "mcpServers": {
     "toolweather": {
       "type": "http",
-      "url": "https://toolweather.toolweather.workers.dev/mcp"
+      "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
     }
   }
 }
 ```
 
-`claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp`
+`claude mcp add --transport http toolweather https://toolweather.toolweather.workers.dev/mcp?src=site`
 
 Claude Desktop (`claude_desktop_config.json`, via `mcp-remote`):
 
@@ -48,7 +48,7 @@ Claude Desktop (`claude_desktop_config.json`, via `mcp-remote`):
   "mcpServers": {
     "toolweather": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp"]
+      "args": ["-y", "mcp-remote", "https://toolweather.toolweather.workers.dev/mcp?src=site"]
     }
   }
 }
@@ -57,7 +57,7 @@ Claude Desktop (`claude_desktop_config.json`, via `mcp-remote`):
 Smithery / remote HTTP. Public streamable HTTP, no API key, no `Authorization` header. Paste the URL into Smithery or any remote HTTP client (Cline `cline_mcp_settings.json` uses this same URL):
 
 ```text
-https://toolweather.toolweather.workers.dev/mcp
+https://toolweather.toolweather.workers.dev/mcp?src=site
 ```
 
 Smithery HTTP config (`type` and `url` only, per https://smithery.ai/docs/use/deep-linking):
@@ -65,7 +65,7 @@ Smithery HTTP config (`type` and `url` only, per https://smithery.ai/docs/use/de
 ```json
 {
   "type": "http",
-  "url": "https://toolweather.toolweather.workers.dev/mcp"
+  "url": "https://toolweather.toolweather.workers.dev/mcp?src=site"
 }
 ```
 
