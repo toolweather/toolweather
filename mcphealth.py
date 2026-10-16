@@ -443,7 +443,7 @@ class HostLimiter:
 
 def norm_tools(tools):
     keep = [{"name": t.get("name"), "description": t.get("description"),
-             "inputSchema": t.get("inputSchema"), "outputSchema": t.get("outputSchema")} for t in tools]
+             "inputSchema": t.get("inputSchema"), "outputSchema": t.get("outputSchema")} for t in (tools or []) if isinstance(t, dict)]
     keep.sort(key=lambda t: str(t["name"]))
     js = json.dumps(keep, sort_keys=True, separators=(",", ":"))
     return js, hashlib.sha256(js.encode()).hexdigest()
@@ -494,11 +494,24 @@ async def probe_one(client, sem, hl, ep, timeout):
 
 # ---------- diffing ----------
 def _props(schema):
-    s = schema or {}
-    return s.get("properties") or {}, set(s.get("required") or [])
+    # JSON Schema allows boolean schemas (true/false) anywhere; treat non-dicts as having no properties
+    s = schema if isinstance(schema, dict) else {}
+    props = s.get("properties"); props = props if isinstance(props, dict) else {}
+    req = s.get("required"); req = req if isinstance(req, list) else []
+    return props, set(r for r in req if isinstance(r, str))
+
+def _ptype(p):
+    if isinstance(p, dict): return p.get("type")
+    if isinstance(p, bool): return "<schema:%s>" % str(p).lower()
+    return None
+
+def _tools_by_name(js):
+    try: lst = json.loads(js) if js else []
+    except (TypeError, ValueError): lst = []
+    return {t.get("name"): t for t in (lst if isinstance(lst, list) else []) if isinstance(t, dict)}
 
 def diff_tools(old_js, new_js):
-    old = {t["name"]: t for t in json.loads(old_js)}; new = {t["name"]: t for t in json.loads(new_js)}
+    old = _tools_by_name(old_js); new = _tools_by_name(new_js)
     ch = []
     for n in old.keys() - new.keys(): ch.append(("breaking", "tool_removed", n, ""))
     for n in new.keys() - old.keys(): ch.append(("harmless", "tool_added", n, ""))
@@ -510,7 +523,7 @@ def diff_tools(old_js, new_js):
         for p in np_.keys() - op.keys():
             if p not in nreq: ch.append(("harmless", "optional_param_added", n, p))
         for p in op.keys() & np_.keys():
-            ot, nt = op[p].get("type"), np_[p].get("type")
+            ot, nt = _ptype(op[p]), _ptype(np_[p])
             if ot != nt: ch.append(("breaking", "param_type_changed", n, "%s: %s -> %s" % (p, ot, nt)))
             elif op[p] != np_[p]: ch.append(("harmless", "param_schema_changed", n, p))
         if old[n].get("description") != new[n].get("description"):
