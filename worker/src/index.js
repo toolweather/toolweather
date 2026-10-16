@@ -1,3 +1,4 @@
+import { withSources } from "./sources.js";
 // Toolweather API + MCP endpoint on Cloudflare Workers (free tier). Verdicts are precomputed at ingest.
 import CARD from "./static/server-card.json";
 import OPENAPI from "./static/openapi.json";
@@ -484,7 +485,7 @@ async function dispatchProbe(env) {
     return note({ ok: r.status === 204, http_status: r.status });
   } catch (e) { return note({ ok: false, error: String(e.message || e).slice(0, 200) }); }
 }
-export default {
+const worker = {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), p = url.pathname;
     const key = req.headers.get("x-api-key") || (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "") || url.searchParams.get("key");
@@ -605,3 +606,14 @@ export default {
     if (new Date(ev.scheduledTime).getUTCMinutes() % 15 === 0) ctx.waitUntil(dispatchProbe(env));
   },
 };
+
+const TW_REST = [
+  [/^(GET|POST) \/(v1|x402)\/is_safe_to_call$/, "is_safe_to_call"],
+  [/^(GET|POST) \/(v1|x402)\/batch_check$/, "batch_check"],
+  [/^(GET|POST) \/(v1|x402)\/suggest_alternatives$/, "suggest_alternatives"],
+  [/^(GET|POST) \/x402\/live_check$/, "live_check"],
+  [/^POST \/v1\/watches$/, "watch_server"],
+];
+const baseFetch = worker.fetch.bind(worker);
+worker.fetch = withSources((req, env, ctx) => baseFetch(req, env, ctx), TW_REST);
+export default worker;

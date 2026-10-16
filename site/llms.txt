@@ -2,7 +2,7 @@
 
 > Toolweather is a suite for AI agents: (1) MCP server health — whether an MCP server or tool is safe to call right now, with working alternatives (~2,000 remote MCP servers from the official MCP registry, probed every 15 minutes); (2) Upstream — whether an AI/dev API is down, whether a model is deprecated and what replaces it (~40 providers); (3) SpendGate — whether a planned spend should be approved, escalated to a human, or blocked; (4) PayCheck — whether a merchant, host, or wallet is trusted before an agent pays. One MCP endpoint. Health checks are read-only: those tools are never called. SpendGate scores a planned payment; it does not send it. PayCheck scores a payee; it does not send money.
 
-One connection (`https://toolweather.toolweather.workers.dev/mcp`) gives you four tools:
+One connection (`https://toolweather.toolweather.workers.dev/mcp?src=site`) gives you four tools:
 
 - MCP health: `check_mcp_server_health`, `find_alternative_mcp_servers`, `watch_server`, `list_watches`, `unwatch_server`, `get_api_key`
 - Upstream (API status and model retirements): `check_api_status`, `check_model_deprecation`, `list_recent_api_changes`, `list_providers`, `get_digest`
@@ -15,22 +15,22 @@ Copy this MCP config (anonymous, no key, no Authorization header). Same blocks o
 
 Cursor (`~/.cursor/mcp.json`):
 
-    {"mcpServers":{"toolweather":{"url":"https://toolweather.toolweather.workers.dev/mcp"}}}
+    {"mcpServers":{"toolweather":{"url":"https://toolweather.toolweather.workers.dev/mcp?src=site"}}}
 
 Claude Code (`.mcp.json`; `"type": "http"` is required, or Claude Code treats the entry as stdio and skips it):
 
-    {"mcpServers":{"toolweather":{"type":"http","url":"https://toolweather.toolweather.workers.dev/mcp"}}}
+    {"mcpServers":{"toolweather":{"type":"http","url":"https://toolweather.toolweather.workers.dev/mcp?src=site"}}}
 
 Claude Desktop (`claude_desktop_config.json`, via mcp-remote):
 
-    {"mcpServers":{"toolweather":{"command":"npx","args":["-y","mcp-remote","https://toolweather.toolweather.workers.dev/mcp"]}}}
+    {"mcpServers":{"toolweather":{"command":"npx","args":["-y","mcp-remote","https://toolweather.toolweather.workers.dev/mcp?src=site"]}}}
 
 Smithery / remote HTTP URL (Smithery HTTP config is `type` plus `url` only):
 
-    https://toolweather.toolweather.workers.dev/mcp
-    {"type":"http","url":"https://toolweather.toolweather.workers.dev/mcp"}
+    https://toolweather.toolweather.workers.dev/mcp?src=site
+    {"type":"http","url":"https://toolweather.toolweather.workers.dev/mcp?src=site"}
 
-Cursor install deeplink (base64 config is `{"url":"https://toolweather.toolweather.workers.dev/mcp"}`): `cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9`
+Cursor install deeplink (base64 config is `{"url":"https://toolweather.toolweather.workers.dev/mcp?src=site"}`): `cursor://anysphere.cursor-deeplink/mcp/install?name=toolweather&config=eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcD9zcmM9c2l0ZSJ9`
 
 IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-urllib/x.y` User-Agent with `HTTP 403` and body `error code: 1010`, before the request reaches Toolweather. This affects every free `*.workers.dev` and `*.pages.dev` address and cannot be turned off there. Fix: send any other User-Agent:
 
@@ -55,7 +55,7 @@ IMPORTANT for Python `urllib`: Cloudflare's edge rejects the default `Python-url
 ## Use it
 
 - Auth-gated servers: verdicts include `auth.state` = `auth_ok` (OAuth login flow reachable: RFC 9728 + RFC 8414 metadata resolve, authorization and token endpoints answer over TLS; `dynamic_client_registration` says if registration is open), `auth_suspect` (endpoints reachable but one returned a 5xx to a parameter-less check; caution), `auth_broken` (OAuth advertised but metadata missing or an endpoint unreachable/TLS fails; verdict unsafe because new logins will fail) or `auth_opaque` (credentials needed, no OAuth discovery). Pass your own token as header `X-Upstream-Authorization: Bearer <token>` (REST) or `bearer_token` (MCP) for a one-off authenticated initialize + tools/list check; the token is never stored or logged.
-- [MCP endpoint (streamable HTTP)](https://toolweather.toolweather.workers.dev/mcp): tools `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`), `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), `watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`, plus Upstream suite tools `check_api_status`, `check_model_deprecation`, `list_recent_api_changes`, `list_providers`, `get_digest`, plus SpendGate suite tools `score_spend`, `get_quota`, `spendgate_get_api_key`, plus PayCheck suite tools `check_merchant`, `paycheck_get_quota`, `paycheck_get_api_key`. Send header `X-API-Key: <key>`. Answers 2026-07-28 `server/discover` and legacy `initialize`.
+- [MCP endpoint (streamable HTTP)](https://toolweather.toolweather.workers.dev/mcp?src=site): tools `get_api_key()` (no key needed), `check_mcp_server_health(server, tool?)` (alias `is_safe_to_call`), `find_alternative_mcp_servers(query, limit?)` (alias `suggest_alternatives`), `watch_server(server, webhook_url)`, `list_watches()`, `unwatch_server(id)`, plus Upstream suite tools `check_api_status`, `check_model_deprecation`, `list_recent_api_changes`, `list_providers`, `get_digest`, plus SpendGate suite tools `score_spend`, `get_quota`, `spendgate_get_api_key`, plus PayCheck suite tools `check_merchant`, `paycheck_get_quota`, `paycheck_get_api_key`. Send header `X-API-Key: <key>`. Answers 2026-07-28 `server/discover` and legacy `initialize`.
 - [REST: is_safe_to_call](https://toolweather.toolweather.workers.dev/v1/is_safe_to_call?server=io.github.owner/name): returns `verdict` (safe / caution / unsafe / unknown), reasons, status, latency, auth info, last tool change, `checked_at`, `age_seconds`. Add `fresh=true` to force a live handshake; checks older than 5 minutes are re-verified live automatically (200 live checks/key/day).
 - [Track record](https://toolweather.toolweather.workers.dev/v1/accuracy): daily share of verdicts that matched the next scheduled check of the same server (stability between checks, not tool-call success). No key needed.
 - [REST: suggest_alternatives](https://toolweather.toolweather.workers.dev/v1/suggest_alternatives?q=send%20email): working servers with similar tools.

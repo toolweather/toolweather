@@ -6,7 +6,7 @@ only; it never embeds a real key.
 """
 import base64, html, json
 
-MCP_URL = "https://toolweather.toolweather.workers.dev/mcp"
+MCP_URL = "https://toolweather.toolweather.workers.dev/mcp?src=site"
 
 CURSOR_JSON = json.dumps(
     {"mcpServers": {"toolweather": {"url": MCP_URL}}}, indent=2)

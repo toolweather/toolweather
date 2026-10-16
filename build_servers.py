@@ -617,7 +617,7 @@ def self_check():
         assert "Copy this MCP config" in home
         assert 'href="#install"' in home
         assert site_install.CURSOR_DEEPLINK.endswith(
-            "eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcCJ9")
+            "eyJ1cmwiOiJodHRwczovL3Rvb2x3ZWF0aGVyLnRvb2x3ZWF0aGVyLndvcmtlcnMuZGV2L21jcD9zcmM9c2l0ZSJ9")
         for pid, text in (
             ("cfg-cursor", site_install.CURSOR_JSON),
             ("cfg-claude-code", site_install.CLAUDE_CODE_JSON),
