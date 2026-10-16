@@ -501,14 +501,22 @@ def _props(schema):
     return props, set(r for r in req if isinstance(r, str))
 
 def _ptype(p):
-    if isinstance(p, dict): return p.get("type")
-    if isinstance(p, bool): return "<schema:%s>" % str(p).lower()
-    return None
+    # Boolean, null, and array schemas are valid JSON Schema and have no "type".
+    # Differing whole values are param_schema_changed; do not invent a type name.
+    return p.get("type") if isinstance(p, dict) else None
 
 def _tools_by_name(js):
-    try: lst = json.loads(js) if js else []
-    except (TypeError, ValueError): lst = []
-    return {t.get("name"): t for t in (lst if isinstance(lst, list) else []) if isinstance(t, dict)}
+    if not js: return {}
+    raw = json.loads(js)
+    if not isinstance(raw, list):
+        raise ValueError("tools JSON is %s, expected a list" % type(raw).__name__)
+    out = {}
+    for t in raw:
+        if not isinstance(t, dict): continue
+        name = t.get("name")
+        if not isinstance(name, str): continue   # missing, null, or non-string name
+        out[name] = t
+    return out
 
 def diff_tools(old_js, new_js):
     old = _tools_by_name(old_js); new = _tools_by_name(new_js)
@@ -531,6 +539,13 @@ def diff_tools(old_js, new_js):
         if old[n].get("outputSchema") != new[n].get("outputSchema"):
             ch.append(("harmless", "output_schema_changed", n, ""))
     return ch
+
+def diff_endpoint(old_js, new_js, label):
+    # One bad payload must not abort the cycle before it commits.
+    try: return diff_tools(old_js, new_js)
+    except Exception as e:
+        print("diff failed for %s: %s: %s" % (label, type(e).__name__, str(e)[:300]), file=sys.stderr)
+        return []
 
 # ---------- cycle ----------
 async def run_cycle(dbpath, limit, concurrency, timeout, sample, host_gap, from_cycle=None, budget=None):
@@ -586,7 +601,7 @@ async def run_cycle(dbpath, limit, concurrency, timeout, sample, host_gap, from_
                            r.get("tools_json"), r.get("tool_count"), r.get("error"), r.get("era"), r.get("supports_2026_07_28"),
                            r.get("legacy_versions"), r.get("spec_readiness"), r.get("oauth"))).lastrowid
         if r["status"] == "ok" and prev and prev[1] != r["tools_hash"]:
-            for sev, kind, tool, det in diff_tools(prev[2], r["tools_json"]):
+            for sev, kind, tool, det in diff_endpoint(prev[2], r["tools_json"], "%s (%s)" % (ep[0], ep[2])):
                 con.execute("INSERT INTO changes(endpoint_id,ts,prev_probe,probe,severity,kind,tool,detail) VALUES(?,?,?,?,?,?,?,?)",
                             (eid, time.time(), prev[0], pid, sev, kind, tool, det))
                 nchg += 1; nbreak += sev == "breaking"
